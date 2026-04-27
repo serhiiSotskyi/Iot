@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { setLatestEvent } from "../../../lib/latestEventStore";
+import { recordEvent } from "../../../lib/eventStore";
 
 export async function POST(request) {
   try {
@@ -19,8 +19,8 @@ export async function POST(request) {
       );
     }
 
-    const latest = setLatestEvent(payload);
-    return NextResponse.json({ ok: true, latest });
+    const result = await recordEvent(payload);
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json(
       {
@@ -31,4 +31,3 @@ export async function POST(request) {
     );
   }
 }
-

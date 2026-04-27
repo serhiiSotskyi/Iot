@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "git is required but was not found." >&2
+  exit 1
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Docker Compose is required but was not found." >&2
+  exit 1
+fi
+
+if [ ! -f .env ] && [ -f .env.example ]; then
+  cp .env.example .env
+  echo "Created .env from .env.example. Edit it if you need different credentials."
+fi
+
+git pull --ff-only
+docker compose up -d --build
+docker compose ps
+
+set -a
+[ -f .env ] && . ./.env
+set +a
+
+PORT="${WEB_PORT:-3000}"
+echo
+echo "Dashboard: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${PORT}/"
+echo "If hostname detection is blank, use http://SERVER_IP:${PORT}/"

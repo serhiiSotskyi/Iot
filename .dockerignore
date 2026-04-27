@@ -1,0 +1,15 @@
+.git
+.venv
+node_modules
+web/node_modules
+web/.next
+arduino
+bridge
+edge-impulse-sdk
+model-parameters
+tflite-model
+serhiisotskyi-project-1_inferencing
+pepstee-project-1_inferencing
+joelshore-project-1-cpp-mcu-v1-impulse-#8
+*.zip
+*.log

@@ -7,7 +7,9 @@ import argparse
 import json
 import os
 import sys
+import time
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import requests
 import serial
@@ -34,6 +36,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="HTTP endpoint that receives each JSON event.",
     )
     parser.add_argument(
+        "--control-endpoint",
+        default=os.getenv("CONTROL_ENDPOINT"),
+        help=(
+            "Optional HTTP endpoint polled for stop commands. "
+            "Defaults to /api/bridge/control next to --endpoint."
+        ),
+    )
+    parser.add_argument(
+        "--control-interval",
+        type=float,
+        default=float(os.getenv("CONTROL_INTERVAL", "1")),
+        help="Seconds between control endpoint checks. Default: 1",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=float(os.getenv("HTTP_TIMEOUT", "5")),
@@ -45,6 +61,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print each forwarded JSON payload in addition to the HTTP status.",
     )
     return parser
+
+
+def infer_control_endpoint(endpoint: str) -> str | None:
+    parsed = urlparse(endpoint)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+
+    return urlunparse(parsed._replace(path="/api/bridge/control", params="", query="", fragment=""))
 
 
 def parse_json_line(line: str) -> dict[str, Any] | None:
@@ -71,12 +95,12 @@ def post_payload(
     payload: dict[str, Any],
     timeout: float,
     verbose: bool,
-) -> None:
+) -> bool:
     try:
         response = session.post(endpoint, json=payload, timeout=timeout)
     except requests.RequestException as exc:
         print(f"[bridge] POST failed: {exc}", flush=True)
-        return
+        return True
 
     if 200 <= response.status_code < 300:
         event_name = payload.get("event", "unknown")
@@ -85,10 +109,52 @@ def post_payload(
             print(f"[bridge] POST {event_name} -> {response.status_code} {compact}", flush=True)
         else:
             print(f"[bridge] POST {event_name} -> {response.status_code}", flush=True)
-        return
+
+        try:
+            response_payload = response.json()
+        except ValueError:
+            response_payload = {}
+
+        if response_payload.get("stopBridge") is True:
+            print("[bridge] stop requested by server; closing serial connection", flush=True)
+            return False
+
+        return True
 
     body = response.text.strip().replace("\n", " ")
     print(f"[bridge] HTTP {response.status_code}: {body[:200]}", flush=True)
+    return True
+
+
+def stop_requested(
+    session: requests.Session,
+    control_endpoint: str | None,
+    timeout: float,
+) -> bool:
+    if not control_endpoint:
+        return False
+
+    try:
+        response = session.get(control_endpoint, timeout=timeout)
+    except requests.RequestException as exc:
+        print(f"[bridge] control check failed: {exc}", flush=True)
+        return False
+
+    if not 200 <= response.status_code < 300:
+        body = response.text.strip().replace("\n", " ")
+        print(f"[bridge] control HTTP {response.status_code}: {body[:200]}", flush=True)
+        return False
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+
+    if payload.get("stopBridge") is True:
+        print("[bridge] stop requested by server; closing serial connection", flush=True)
+        return True
+
+    return False
 
 
 def main() -> int:
@@ -103,10 +169,20 @@ def main() -> int:
     )
 
     session = requests.Session()
+    control_endpoint = args.control_endpoint or infer_control_endpoint(args.endpoint)
+    next_control_check = 0.0
+    if control_endpoint:
+        print(f"[bridge] polling control endpoint {control_endpoint}", flush=True)
 
     try:
         with serial.Serial(args.port, args.baud, timeout=1) as ser:
             while True:
+                now = time.monotonic()
+                if control_endpoint and now >= next_control_check:
+                    if stop_requested(session, control_endpoint, args.timeout):
+                        return 0
+                    next_control_check = now + max(args.control_interval, 0.1)
+
                 raw = ser.readline()
                 if not raw:
                     continue
@@ -116,7 +192,15 @@ def main() -> int:
                 if payload is None:
                     continue
 
-                post_payload(session, args.endpoint, payload, args.timeout, args.verbose)
+                should_continue = post_payload(
+                    session,
+                    args.endpoint,
+                    payload,
+                    args.timeout,
+                    args.verbose,
+                )
+                if not should_continue:
+                    return 0
     except serial.SerialException as exc:
         print(f"[bridge] serial error: {exc}", file=sys.stderr)
         return 1

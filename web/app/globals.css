@@ -122,6 +122,29 @@ h1 {
   margin-top: 18px;
 }
 
+.status-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(54, 217, 126, 0.1);
+  border: 1px solid rgba(142, 242, 184, 0.22);
+}
+
+.status-strip span {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.status-strip strong {
+  font-size: 1.25rem;
+}
+
 .metric-card {
   padding: 14px;
   border-radius: 18px;
@@ -152,6 +175,290 @@ h1 {
   margin-top: 18px;
 }
 
+.session-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.25fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.session-count,
+.section-title {
+  margin: 12px 0 0;
+  color: var(--muted);
+}
+
+.session-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.session-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  max-height: 460px;
+  overflow: auto;
+}
+
+.session-button {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 18px;
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-button-active {
+  border-color: rgba(142, 242, 184, 0.46);
+  background: rgba(54, 217, 126, 0.12);
+}
+
+.live-session-button,
+.next-data-button {
+  border: 1px solid rgba(142, 242, 184, 0.32);
+  background: rgba(54, 217, 126, 0.1);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 9px 13px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.session-button span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.session-button em,
+.session-button small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-style: normal;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--text);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.status-active {
+  background: rgba(54, 217, 126, 0.16);
+  color: var(--accent);
+}
+
+.status-completed {
+  background: rgba(98, 162, 255, 0.16);
+  color: #9ec3ff;
+}
+
+.status-abandoned {
+  background: rgba(255, 155, 155, 0.14);
+  color: var(--error);
+}
+
+.session-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.session-heading h2 {
+  margin: 0;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.session-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.stop-session-button {
+  border: 1px solid rgba(255, 155, 155, 0.4);
+  background: rgba(255, 155, 155, 0.12);
+  color: var(--error);
+  border-radius: 999px;
+  padding: 11px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stop-session-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.next-data-button:disabled,
+.live-session-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.milestone-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.milestone-row div {
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.milestone-row span {
+  display: block;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+}
+
+.milestone-row strong {
+  display: block;
+  margin-top: 8px;
+}
+
+.milestone-hit {
+  color: var(--accent);
+}
+
+.milestone-miss {
+  color: var(--muted);
+}
+
+.timeline-block,
+.chart-block {
+  margin-top: 22px;
+}
+
+.selected-event-card {
+  margin-top: 22px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.selected-event-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.selected-event-summary span {
+  color: var(--muted);
+}
+
+.selected-event-card pre {
+  margin: 14px 0 0;
+  padding: 14px;
+  border-radius: 14px;
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--text);
+}
+
+.timeline-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 88px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timeline-item-active {
+  border-color: rgba(142, 242, 184, 0.46);
+  background: rgba(54, 217, 126, 0.1);
+}
+
+.timeline-item span,
+.timeline-item em,
+.chart-heading span {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.chart-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.confidence-chart {
+  display: block;
+  width: 100%;
+  height: 180px;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  color: var(--accent);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    rgba(0, 0, 0, 0.22);
+  background-size: 100% 25%, 20% 100%, auto;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.direction-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.direction-chips span {
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(142, 242, 184, 0.1);
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
 .raw-panel pre {
   margin: 16px 0 0;
   padding: 18px;
@@ -177,8 +484,15 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .session-layout {
+    grid-template-columns: 1fr;
+  }
+
   .movement-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
+  .milestone-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
