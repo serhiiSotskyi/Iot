@@ -2,7 +2,7 @@
 
 Run from the repo root:
 
-    python -m unittest bridge.test_serial_to_http
+    python -m unittest tests.bridge.test_serial_to_http
 
 These tests do not open a serial port, do not start an HTTP session, and
 do not need any of the runtime dependencies — only the standard library.
@@ -24,8 +24,9 @@ for stub_name in ("serial", "requests"):
     if stub_name not in sys.modules:
         sys.modules[stub_name] = types.ModuleType(stub_name)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from serial_to_http import infer_control_endpoint, parse_json_line  # noqa: E402
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(REPO_ROOT, "bridge"))
+from serial_to_http import infer_control_endpoint, parse_json_line, select_endpoint  # noqa: E402
 
 
 class TestParseJsonLine(unittest.TestCase):
@@ -80,6 +81,38 @@ class TestInferControlEndpoint(unittest.TestCase):
     def test_invalid_url_returns_none(self):
         self.assertIsNone(infer_control_endpoint("not-a-url"))
         self.assertIsNone(infer_control_endpoint(""))
+
+
+class TestSelectEndpoint(unittest.TestCase):
+    def test_colour_authenticated_uses_auth_endpoint_when_present(self):
+        self.assertEqual(
+            select_endpoint(
+                {"event": "colour_authenticated"},
+                "http://localhost:3000/api/movement",
+                "http://localhost:3000/api/authorize",
+            ),
+            "http://localhost:3000/api/authorize",
+        )
+
+    def test_colour_authenticated_falls_back_to_default_endpoint(self):
+        self.assertEqual(
+            select_endpoint(
+                {"event": "colour_authenticated"},
+                "http://localhost:3000/api/movement",
+                None,
+            ),
+            "http://localhost:3000/api/movement",
+        )
+
+    def test_non_auth_events_keep_default_endpoint(self):
+        self.assertEqual(
+            select_endpoint(
+                {"event": "movement"},
+                "http://localhost:3000/api/movement",
+                "http://localhost:3000/api/authorize",
+            ),
+            "http://localhost:3000/api/movement",
+        )
 
 
 if __name__ == "__main__":

@@ -90,7 +90,7 @@ pip install pyserial requests
 BRIDGE_API_TOKEN="$(grep ^BRIDGE_API_TOKEN .env | cut -d= -f2)" \
 python bridge/serial_to_http.py \
     --port /dev/ttyACM0 \
-    --url http://localhost:3000/api/movement
+    --endpoint http://localhost:3000/api/movement
 ```
 
 The bridge picks up `BRIDGE_API_TOKEN` from the environment (or accepts
@@ -98,6 +98,21 @@ The bridge picks up `BRIDGE_API_TOKEN` from the environment (or accepts
 
 Adjust `--port` to your serial device. On Linux the user must be in the
 `dialout` group to read `/dev/ttyACM*`.
+
+On Windows, the helper script can do the repetitive local-test setup:
+
+```powershell
+.\scripts\manual-test.ps1
+```
+
+It creates `.env` from `.env.example` if needed, fills blank local test
+tokens, starts Docker Compose, opens the dashboard, auto-detects a USB
+serial COM port, and starts the bridge with a longer manual-test timeout.
+If auto-detection chooses the wrong port, pass it explicitly:
+
+```powershell
+.\scripts\manual-test.ps1 -Port COM6
+```
 
 ### 4. Walk the demo
 
@@ -128,9 +143,6 @@ code does.
 | `docs/diagrams/02-data-flow-diagram.drawio` | DFD with trust boundaries — backs up the threat model |
 | `docs/diagrams/03-firmware-state-machine.drawio` | Boot → arm → voice → colour → motion gates |
 | `docs/diagrams/04-pick-session-sequence.drawio` | End-to-end sequence across all six participants |
-
-`AGENTS.md` is a longer handoff document covering implementation details
-that future contributors (human or AI) need to know.
 
 ## Configuration
 
@@ -168,16 +180,16 @@ unauthed requests but accept the bridge token, and the Stop endpoint
 accepts *either* the operator session cookie *or* `ADMIN_API_TOKEN`.
 Exit code is the number of failed assertions.
 
-**2. `python -m unittest bridge.test_serial_to_http` — pure-logic unit tests**:
+**2. `python -m unittest tests.bridge.test_serial_to_http` — pure-logic unit tests**:
 
 ```bash
-python -m unittest bridge.test_serial_to_http -v
+python -m unittest tests.bridge.test_serial_to_http -v
 ```
 
-10 tests over `parse_json_line` (handles boot banners, malformed JSON,
-non-object payloads, whitespace) and `infer_control_endpoint` (URL
-inference; query-string drop). Stubs out `pyserial` and `requests` so
-no install is needed beyond Python 3.11+.
+13 tests over `parse_json_line` (handles boot banners, malformed JSON,
+non-object payloads, whitespace), `infer_control_endpoint` (URL
+inference; query-string drop), and colour-auth endpoint selection. Stubs
+out `pyserial` and `requests` so no install is needed beyond Python 3.11+.
 
 ## Status
 
@@ -185,5 +197,4 @@ This is a university IoT project, intentionally scoped for a controlled
 lab demo on a trusted LAN. The threat model in `docs/threat-model.md`
 records what is and isn't mitigated, with explicit out-of-scope items
 (TLS termination, per-operator identity, firmware code-signing) listed
-as recommended next steps. Pre-submission tasks remaining for each
-group member are listed in [`TODO.md`](TODO.md).
+as recommended next steps.

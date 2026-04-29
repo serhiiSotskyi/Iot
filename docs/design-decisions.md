@@ -86,7 +86,7 @@ A single `arduino/libraries/combined_inferencing/` library that bundles **one** 
 
 ### Why this is non-obvious
 
-The "obvious" thing to do is to keep all three generated libraries and `#include` them — and that's exactly what fails. The combined library is the only working option short of running each model on a separate MCU. `AGENTS.md` explicitly warns future contributors not to undo this.
+The "obvious" thing to do is to keep all three generated libraries and `#include` them — and that's exactly what fails. The combined library is the only working option short of running each model on a separate MCU.
 
 ### Trade-off
 
@@ -108,7 +108,7 @@ Next.js's `next build` step imports route modules without the runtime environmen
 
 ### Trade-off
 
-- The in-memory fallback isn't safe across Next.js module-instance reloads in development. We accept that — it's a development-only escape hatch — and we document it in `AGENTS.md`.
+- The in-memory fallback isn't safe across Next.js module-instance reloads in development. We accept that because it is a development-only escape hatch; production requires `DATABASE_URL`.
 
 ---
 
