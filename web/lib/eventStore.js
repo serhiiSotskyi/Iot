@@ -31,8 +31,18 @@ if (pgPool && !globalThis.__iotDemoPgPool) {
   globalThis.__iotDemoPgPool = pgPool;
 }
 
+function assertMemoryFallbackAllowed() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "DATABASE_URL must be set when NODE_ENV=production. " +
+      "The in-memory fallback is for local development only."
+    );
+  }
+}
+
 export async function recordEvent(payload) {
   if (!pgPool) {
+    assertMemoryFallbackAllowed();
     return recordEventInMemory(payload);
   }
 
@@ -41,6 +51,7 @@ export async function recordEvent(payload) {
 
 export async function completeCurrentSession() {
   if (!pgPool) {
+    assertMemoryFallbackAllowed();
     return completeCurrentSessionInMemory();
   }
 
@@ -49,6 +60,7 @@ export async function completeCurrentSession() {
 
 export async function consumeBridgeControlState() {
   if (!pgPool) {
+    assertMemoryFallbackAllowed();
     const stopBridge = memoryStore.bridgeStopRequested;
     memoryStore.bridgeStopRequested = false;
     return { stopBridge };
@@ -84,6 +96,7 @@ export async function consumeBridgeControlState() {
 
 export async function getLatestEvent() {
   if (!pgPool) {
+    assertMemoryFallbackAllowed();
     return memoryStore.latestEvent;
   }
 
@@ -107,6 +120,7 @@ export async function getLatestEvent() {
 
 export async function listSessions(limit = 20) {
   if (!pgPool) {
+    assertMemoryFallbackAllowed();
     return memoryStore.sessions
       .slice()
       .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
@@ -145,6 +159,7 @@ export async function listSessions(limit = 20) {
 
 export async function getSessionDetail(id) {
   if (!pgPool) {
+    assertMemoryFallbackAllowed();
     const session = memoryStore.sessions.find((item) => item.id === id);
     if (!session) {
       return null;
