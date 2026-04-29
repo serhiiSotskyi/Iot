@@ -284,17 +284,17 @@ The Python bridge forms the operational boundary between physical hardware and t
 
 The dashboard is designed around **session recording** rather than only live status. A `setup_status` event starts a new session. Later `voice_start`, `colour_authenticated`, and movement events are attached to the active session in sequence. The database stores sessions, raw events, movement samples, and recording state. The `movement_samples` table separates chartable numeric telemetry from the raw JSON payload, while the `events` table preserves original events for auditability. This gives the project both a live monitor and a persistent evidence store.
 
-![Fig. G2. Live dashboard showing the current recorded session state.](./media/image15.png)
+![Fig. G6. Live dashboard showing the current recorded session state.](./media/image15.png)
 
-*Fig. G2. Live dashboard showing the current recorded session state.*
+*Fig. G6. Live dashboard showing the current recorded session state.*
 
 The dashboard shows business-facing status rather than only developer logs. It reports whether the voice, colour, and movement stages are waiting or complete, displays the raw latest JSON event, and lists recorded sessions with timestamps. The *Stop current session* button controls the lifecycle from the browser. When triggered, the server completes an authenticated run. If voice or colour authentication was not completed, the incomplete session data is deleted because it does not represent a successful demo run. Stop also sets bridge-control state so the bridge exits cleanly.
 
-![Fig. G6. Recorded movement session visualised in the web dashboard with a replay chart.](./media/image16.png)
+![Fig. G7. Recorded movement session visualised in the web dashboard with a replay chart.](./media/image16.png)
 
-*Fig. G6. Recorded movement session visualised in the web dashboard.*
+*Fig. G7. Recorded movement session visualised in the web dashboard.*
 
-Figure G6 shows why recording sessions is more valuable than printing logs. The dashboard turns repeated movement events into a replayable chart with confidence values and timestamps. This supports post-demo analysis: the team can show that the system detected voice, authenticated colour, entered tracking, and captured directional movement data — providing evidence even after the live interaction has ended.
+Figure G7 shows why recording sessions is more valuable than printing logs. The dashboard turns repeated movement events into a replayable chart with confidence values and timestamps. This supports post-demo analysis: the team can show that the system detected voice, authenticated colour, entered tracking, and captured directional movement data — providing evidence even after the live interaction has ended.
 
 ---
 
@@ -304,9 +304,9 @@ Figure G6 shows why recording sessions is more valuable than printing logs. The 
 
 The deployable server path uses Docker Compose to run the web application and PostgreSQL database as a repeatable multi-container stack (Docker, n.d.-a). The `postgres` service uses the `postgres:16-alpine` image with a named volume for persistent data. The `web` service builds the Next.js application from `web/Dockerfile` and runs a database migration script before starting the production server, so a fresh server creates the required schema tables automatically. Docker Compose environment variables configure Postgres credentials, the public web port, and API tokens (Docker, n.d.-b).
 
-![Fig. G9. Docker Compose stack running the web application and database services.](./media/image17.png)
+![Fig. G8. Docker Compose stack running the web application and database services.](./media/image17.png)
 
-*Fig. G9. Docker Compose stack running the web application and database services.*
+*Fig. G8. Docker Compose stack running the web application and database services.*
 
 The database port is bound to `127.0.0.1` on the host machine, while the web container communicates with it through the internal Docker network only. This means the database is never directly accessible from the public internet, reducing the attack surface to the single web API endpoint.
 
@@ -362,13 +362,13 @@ The implemented controls go beyond the report-level summary:
 - **Database isolation.** PostgreSQL is bound to `127.0.0.1` on the host, so the only network-reachable interface is the web container. The web container talks to the database on the internal Docker network only.
 - **Authorisation channel separation.** The bridge `--auth-endpoint` flag (Section 5) lets `colour_authenticated` events be POSTed to a different URL from movement telemetry, allowing different rate limits or audit handling on the authorisation channel.
 
-![Fig. G7. Unauthorised API request returning HTTP 401 when no bearer token is supplied.](./media/image18.png)
+![Fig. G9. Unauthorised API request returning HTTP 401 when no bearer token is supplied.](./media/image18.png)
 
-*Fig. G7. Unauthorised API request returning HTTP 401 when no bearer token is supplied.*
+*Fig. G9. Unauthorised API request returning HTTP 401 when no bearer token is supplied.*
 
-![Fig. G8. Authorised API request succeeding with a valid bearer token.](./media/image19.png)
+![Fig. G10. Authorised API request succeeding with a valid bearer token.](./media/image19.png)
 
-*Fig. G8. Authorised API request succeeding with a valid bearer token.*
+*Fig. G10. Authorised API request succeeding with a valid bearer token.*
 
 The end-to-end auth boundary is verified by `verify.sh` at the repository root, which exercises every protected endpoint and asserts the expected HTTP status — see Section 9.3.
 
@@ -401,10 +401,10 @@ The manual test procedure follows the expected state-machine sequence:
 
 ### 9.2 Movement Model Evaluation Summary
 
-The movement model evaluation demonstrates iterative engineering across four configurations. The key distinction is between two accuracy figures:
+The movement model evaluation (detailed in §3) demonstrates iterative engineering across four configurations. The key distinction is between two accuracy figures:
 
 - **Neural network classifier accuracy** — Edge Impulse's validation-set accuracy during training, reflecting how well the model fits the training distribution
-- **Model test accuracy** — the result when the final trained model is evaluated on the held-out 25% test partition that was never seen during training
+- **Model test accuracy** — the result when the final trained model is evaluated on the held-out test partition (95 of 382 samples, ≈24%) that was never seen during training
 
 | Configuration | Classifier Accuracy (neural network) | Test Accuracy (held-out data) | Deployed? |
 |---|---|---|---|
@@ -470,13 +470,13 @@ IETF (2012) *RFC 6750: The OAuth 2.0 Authorization Framework: Bearer Token Usage
 
 Microsoft (n.d.) *Threats: Microsoft Threat Modeling Tool*. Available at: https://learn.microsoft.com/en-us/azure/security/develop/threat-modeling-tool-threats (Accessed: 28 April 2026).
 
-Shostack, A. (2014) *Threat Modeling: Designing for Security*. Indianapolis: Wiley.
-
 Next.js (n.d.) *Route Handlers*. Available at: https://nextjs.org/docs/app/getting-started/route-handlers-and-middleware (Accessed: 28 April 2026).
 
 Node.js (n.d.) *Crypto: crypto.timingSafeEqual*. Available at: https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b (Accessed: 28 April 2026).
 
 PostgreSQL Global Development Group (n.d.) *PostgreSQL documentation*. Available at: https://www.postgresql.org/docs/ (Accessed: 28 April 2026).
+
+Shostack, A. (2014) *Threat Modeling: Designing for Security*. Indianapolis: Wiley.
 
 ---
 
@@ -487,9 +487,9 @@ PostgreSQL Global Development Group (n.d.) *PostgreSQL documentation*. Available
 | Figs. P1–P7 | §2 | Personal voice TinyML workflow, validation metrics, on-device feasibility, and deployed runtime output |
 | Figs. M1–M5 | §3 | Movement dataset, four-model comparison, neural network vs. test accuracy distinction, on-device performance |
 | Fig. G1 | §4 | End-to-end architecture with trust boundaries and deployment layers |
-| Fig. G2 (state diagram) | §5 | Firmware state machine with transition conditions |
+| Fig. G2 | §5 | Firmware state machine with transition conditions |
 | Figs. G3–G5 | §5 | Bridge output for each state transition: voice, colour, movement |
-| Fig. G2 (dashboard) | §6 | Live dashboard recording session state |
-| Fig. G6 | §6 | Session replay chart with movement confidence values |
-| Fig. G9 | §7 | Docker Compose deployment stack |
-| Figs. G7–G8 | §8 | STRIDE-inspired API protection: 401 and 200 responses |
+| Fig. G6 | §6 | Live dashboard recording session state |
+| Fig. G7 | §6 | Session replay chart with movement confidence values |
+| Fig. G8 | §7 | Docker Compose deployment stack |
+| Figs. G9–G10 | §8 | STRIDE-per-element API protection: 401 unauthorised and 200 authorised responses |
