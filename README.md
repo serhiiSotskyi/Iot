@@ -99,6 +99,21 @@ The bridge picks up `BRIDGE_API_TOKEN` from the environment (or accepts
 Adjust `--port` to your serial device. On Linux the user must be in the
 `dialout` group to read `/dev/ttyACM*`.
 
+On Windows, the helper script can do the repetitive local-test setup:
+
+```powershell
+.\scripts\manual-test.ps1
+```
+
+It creates `.env` from `.env.example` if needed, fills blank local test
+tokens, starts Docker Compose, opens the dashboard, auto-detects a USB
+serial COM port, and starts the bridge with a longer manual-test timeout.
+If auto-detection chooses the wrong port, pass it explicitly:
+
+```powershell
+.\scripts\manual-test.ps1 -Port COM6
+```
+
 ### 4. Walk the demo
 
 1. Reset the board. Watch the dashboard live status update to
