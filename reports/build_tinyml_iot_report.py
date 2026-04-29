@@ -273,10 +273,16 @@ def add_table(doc: Document, headers: Iterable[str], rows: Iterable[Iterable[str
     table = doc.add_table(rows=1, cols=len(headers))
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    if len(headers) == 2:
+        column_widths = [Inches(1.65), Inches(4.65)]
+    else:
+        column_widths = [Inches(6.3 / len(headers)) for _ in headers]
     header_row = table.rows[0]
     set_repeat_table_header(header_row)
     for i, header in enumerate(headers):
         cell = header_row.cells[i]
+        cell.width = column_widths[i]
         set_cell_fill(cell, TABLE_FILL)
         set_cell_margin(cell, 100, 100, 100, 100)
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
@@ -290,6 +296,7 @@ def add_table(doc: Document, headers: Iterable[str], rows: Iterable[Iterable[str
         cells = table.add_row().cells
         for i, value in enumerate(row):
             cell = cells[i]
+            cell.width = column_widths[i]
             set_cell_margin(cell, 90, 100, 90, 100)
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             p = cell.paragraphs[0]
@@ -340,11 +347,17 @@ def cover(doc: Document) -> None:
     rs.font.size = Pt(13)
     rs.font.color.rgb = MUTED
 
-    add_callout(
-        doc,
-        "Project scope",
-        "Arduino Nano 33 BLE Sense firmware runs three TinyML models for voice, colour authentication, and movement recognition. A Python bridge forwards serial JSON to a Next.js dashboard with Postgres-backed session recording, Docker deployment, and STRIDE-informed API security.",
+    scope_title = doc.add_paragraph()
+    scope_title.paragraph_format.space_after = Pt(4)
+    scope_run = scope_title.add_run("Project scope")
+    scope_run.bold = True
+    scope_run.font.color.rgb = ACCENT
+    scope_run.font.size = Pt(11)
+
+    scope = doc.add_paragraph(
+        "Arduino Nano 33 BLE Sense firmware runs three TinyML models for voice, colour authentication, and movement recognition. A Python bridge forwards serial JSON to a Next.js dashboard with Postgres-backed session recording, Docker deployment, and STRIDE-informed API security."
     )
+    scope.paragraph_format.space_after = Pt(14)
 
     meta = [
         ("Student", "Sergey Sotskiy"),
@@ -352,7 +365,13 @@ def cover(doc: Document) -> None:
         ("Report split", "Personal section: voice recognition TinyML. Group section: three-model integration, bridge, dashboard, Docker, and security."),
         ("Date", "28 April 2026"),
     ]
-    add_table(doc, ["Field", "Value"], meta)
+    for label, value in meta:
+        para = doc.add_paragraph()
+        para.paragraph_format.space_after = Pt(3)
+        label_run = para.add_run(f"{label}: ")
+        label_run.bold = True
+        label_run.font.color.rgb = DARK
+        para.add_run(value)
     doc.add_page_break()
 
 
@@ -360,7 +379,7 @@ def executive_summary(doc: Document) -> None:
     heading(doc, "Executive summary")
     p(
         doc,
-        "This report describes a local-first TinyML Internet of Things demo that combines edge inference, cloud-style persistence, and a web dashboard into one demonstrable workflow. The system uses an Arduino Nano 33 BLE Sense class board to detect the spoken keyword start, authenticate a green colour target, and then classify board movement. The board does not connect to the network directly. Instead, it prints structured JSON over USB serial at 115200 baud and a Python bridge forwards each valid event to a Next.js API. The API stores demo sessions in PostgreSQL when Docker is used, while the dashboard shows the latest event, recorded sessions, authentication progress, and a movement replay chart.",
+        "This report describes a local-first TinyML Internet of Things demo that combines edge inference, cloud-style persistence, and a web dashboard into one demonstrable workflow. The system uses an Arduino Nano 33 BLE Sense class board to detect the spoken keyword start, classify a colour target for authentication, and then classify board movement. The board does not connect to the network directly. Instead, it prints structured JSON over USB serial at 115200 baud and a Python bridge forwards each valid event to a Next.js API. The API stores demo sessions in PostgreSQL when Docker is used, while the dashboard shows the latest event, recorded sessions, authentication progress, and a movement replay chart.",
     )
     p(
         doc,
@@ -384,7 +403,7 @@ def intro(doc: Document) -> None:
     )
     p(
         doc,
-        "The business value is not only technical novelty. A staged edge workflow can be adapted to access control, equipment-use logging, gesture-controlled interfaces, or training demonstrations where the system must prove that a user completed a required sequence. The dashboard records sessions, stores movement samples, and can stop a run from the browser. This creates auditable evidence for a demo, while Docker and PostgreSQL make the server side repeatable and persistent rather than a temporary local page.",
+        "The business value is not only technical novelty. A staged edge workflow can be adapted to access control, equipment-use logging, gesture-controlled interfaces, or training demonstrations where the system must prove that a user completed a required sequence. The dashboard records sessions, stores movement samples, and can stop a run from the browser. This creates auditable evidence for a demo, while Docker and PostgreSQL make the server side repeatable and persistent rather than an ad hoc local page.",
     )
 
 
@@ -476,7 +495,7 @@ def architecture_section(doc: Document) -> None:
     )
     p(
         doc,
-        "The bridge layer runs on the laptop connected to the board. It opens the serial port at 115200 baud, ignores non-JSON lines, validates that each line is a JSON object, and posts valid payloads to POST /api/movement. It also polls GET /api/bridge/control so the dashboard can request a clean bridge shutdown. This design was chosen because serial is reliable for the Nano board during a demo, while Python and HTTP are easier to debug than adding networking directly to the firmware.",
+        "The bridge layer runs on the laptop connected to the board. It opens the serial port at 115200 baud, ignores non-JSON lines, validates that each line is a JSON object, and posts valid payloads to the configured HTTP ingest endpoint. In the default deployment this is POST /api/movement, while colour_authenticated events can optionally be routed to a separate authorisation endpoint with --auth-endpoint. It also polls GET /api/bridge/control so the dashboard can request a clean bridge shutdown. This design was chosen because serial is reliable for the Nano board during a demo, while Python and HTTP are easier to debug than adding networking directly to the firmware.",
     )
     p(
         doc,
@@ -488,7 +507,7 @@ def firmware_section(doc: Document) -> None:
     heading(doc, "4. Firmware and three-model integration")
     p(
         doc,
-        "The firmware state machine has three main states: WAITING_FOR_VOICE, WAITING_FOR_COLOUR, and TRACKING_MOVEMENT. It starts in the voice state after reset. A successful start classification emits voice_start and moves to colour. A successful green classification emits colour_authenticated and moves to movement tracking. Once movement tracking starts, the board continuously sends movement events with raw IMU values and the movement model's predicted class and confidence.",
+        "The firmware state machine has three main states: WAITING_FOR_VOICE, WAITING_FOR_COLOUR, and TRACKING_MOVEMENT. It starts in the voice state after reset. A successful start classification emits voice_start and moves to colour. The colour gate still uses the agreed green threshold and streak condition, but the emitted colour_authenticated event now carries the model's top colour label, confidence score, device_id, and board timestamp. Once movement tracking starts, the board continuously sends movement events with raw IMU values and the movement model's predicted class and confidence.",
     )
     add_figure(
         doc,
@@ -502,7 +521,7 @@ def firmware_section(doc: Document) -> None:
     )
     p(
         doc,
-        "The colour model replaced the earlier scripted colour heuristic. The firmware reads APDS9960 red, green, blue, and clear values and maps them to the model input order ch1, ch2, ch3, and ch4. The model labels are blue, green, other, and red. The firmware requires the green class to exceed a 0.70 threshold for three consecutive reads before colour authentication succeeds. This is more robust than a single raw RGB threshold because the model can learn the teammate's recorded colour examples rather than relying only on a fixed ratio.",
+        "The colour model replaced the earlier scripted colour heuristic. The firmware reads APDS9960 red, green, blue, and clear values and maps them to the model input order ch1, ch2, ch3, and ch4. The model labels are blue, green, other, and red. The firmware requires the green class to exceed a 0.70 threshold for three consecutive reads before colour authentication succeeds, then emits the model's top label and confidence in the JSON payload. This is more robust than a single raw RGB threshold because the model can learn the teammate's recorded colour examples rather than relying only on a fixed ratio.",
     )
     add_figure(
         doc,
@@ -534,7 +553,7 @@ def bridge_dashboard_section(doc: Document) -> None:
     )
     p(
         doc,
-        "The dashboard is built around session recording rather than only the latest event. A setup_status event starts a new session. Later voice_start, colour_authenticated, and movement events attach to the active session. The database stores sessions, raw events, movement samples, and recording state. The movement_samples table separates chartable numeric telemetry from the raw JSON payload, while the events table preserves the original event for auditability. This gives the project both a live monitor and a persistent evidence store.",
+        "The dashboard is built around session recording rather than only the latest event. A setup_status event starts a new session. Later voice_start, colour_authenticated, and movement events attach to the active session. The database stores sessions, raw events, movement samples, and recording state. The movement_samples table separates chartable numeric telemetry from the raw JSON payload, while the events table preserves the original event for auditability, including colour confidence, device_id, and timestamp fields. This gives the project both a live monitor and a persistent evidence store.",
     )
     add_figure(
         doc,
@@ -588,7 +607,7 @@ def security_section(doc: Document) -> None:
     )
     p(
         doc,
-        "The implemented mitigation is role-based bearer-token protection. POST /api/movement and GET /api/bridge/control require BRIDGE_API_TOKEN when configured. POST /api/sessions/current/complete requires ADMIN_API_TOKEN when configured. Read-only dashboard endpoints remain public so a viewer can watch the demo without receiving write access. Bearer tokens are sent in the Authorization header, following the standard bearer-token pattern defined by RFC 6750 (IETF, 2012). On the server, token comparison uses Node.js crypto.timingSafeEqual to avoid simple timing leaks in equality checks (Node.js, n.d.).",
+        "The implemented mitigation is role-based bearer-token protection. POST /api/movement and GET /api/bridge/control require BRIDGE_API_TOKEN when configured. POST /api/sessions/current/complete requires either a valid operator session cookie or ADMIN_API_TOKEN. The dashboard uses the cookie issued by /api/auth/login, while external scripts can use the bearer token. Read-only dashboard endpoints remain public so a viewer can watch the demo without receiving write access. Bearer tokens are sent in the Authorization header, following the standard bearer-token pattern defined by RFC 6750 (IETF, 2012). On the server, token comparison uses Node.js crypto.timingSafeEqual to avoid simple timing leaks in equality checks (Node.js, n.d.).",
     )
     add_figure(
         doc,
@@ -604,7 +623,7 @@ def security_section(doc: Document) -> None:
     )
     p(
         doc,
-        "Figures G7 and G8 show the difference between unauthorised and authorised requests. The goal is not enterprise identity management, but practical protection for a demo server. A random network user should not be able to fabricate board events, stop the bridge, or complete/delete sessions. The dashboard prompts for the admin token on the first protected stop action and stores it in browser localStorage for the demo operator.",
+        "Figures G7 and G8 show the difference between unauthorised and authorised requests. The goal is not enterprise identity management, but practical protection for a demo server. A random network user should not be able to fabricate board events, stop the bridge, or complete/delete sessions. Once the operator has logged in via /login, the signed session cookie authorises the Stop action without requiring token entry in the dashboard.",
     )
     p(
         doc,
@@ -616,11 +635,11 @@ def testing_section(doc: Document) -> None:
     heading(doc, "8. Testing and evaluation")
     p(
         doc,
-        "The manual test procedure starts the web application, starts the Python bridge, resets the board, and observes setup_status. The operator says start, shows green to the APDS9960 sensor, then moves the board. A successful run should record voice_start, colour_authenticated, and movement events in that order. The screenshots in this report provide evidence for each phase: voice transition in Figure G3, colour authentication in Figure G4, movement classification in Figure G5, and session replay in Figure G6.",
+        "The manual test procedure starts the web application, starts the Python bridge, resets the board, and observes setup_status. The operator says start, shows green to the APDS9960 sensor, then moves the board. A successful run should record voice_start, colour_authenticated, and movement events in that order. The colour event should preserve the model label, confidence, device_id, and board timestamp. The screenshots in this report provide evidence for each phase: voice transition in Figure G3, colour authentication in Figure G4, movement classification in Figure G5, and session replay in Figure G6.",
     )
     p(
         doc,
-        "API tests were also used. Unauthorised mutation requests return 401 when tokens are configured, while authorised requests succeed. Docker testing checks that Compose starts both services and that migrations complete before the web server runs. The main evaluation result is that the system behaves as a full pipeline: local TinyML inference controls state transitions, the bridge reliably forwards JSON, the web app stores and visualises sessions, and security controls prevent unauthorised writes on the deployed path.",
+        "API tests were also used. Unauthorised mutation requests return 401 when tokens are configured, while authorised requests succeed. Docker testing checks that Compose starts both services and that migrations complete before the web server runs. A full simulated serial-flow test was also run through the real bridge, web container, and Postgres database: setup_status, voice_start, colour_authenticated, movement, and session_complete were stored in order. The main evaluation result is that the system behaves as a full pipeline: local TinyML inference controls state transitions, the bridge reliably forwards JSON, the web app stores and visualises sessions, and security controls prevent unauthorised writes on the deployed path.",
     )
 
 
@@ -664,16 +683,19 @@ def references(doc: Document) -> None:
 
 def appendix(doc: Document) -> None:
     heading(doc, "Appendix A. Evidence map")
-    add_table(
-        doc,
-        ["Evidence", "What it proves"],
-        [
-            ("Figures P1-P7", "Personal voice TinyML workflow, validation, on-device feasibility, and deployed runtime output."),
-            ("Figures G1-G6", "End-to-end architecture, firmware state transitions, bridge forwarding, dashboard session recording, and movement replay."),
-            ("Figures G7-G8", "STRIDE-inspired API protection, with unauthorised and authorised request outcomes."),
-            ("Figure G9", "Docker Compose deployment path for the web app and PostgreSQL database."),
-        ],
-    )
+    evidence_items = [
+        ("Figures P1-P7", "Personal voice TinyML workflow, validation, on-device feasibility, and deployed runtime output."),
+        ("Figures G1-G6", "End-to-end architecture, firmware state transitions, bridge forwarding, dashboard session recording, and movement replay."),
+        ("Figures G7-G8", "STRIDE-inspired API protection, with unauthorised and authorised request outcomes."),
+        ("Figure G9", "Docker Compose deployment path for the web app and PostgreSQL database."),
+    ]
+    for label, value in evidence_items:
+        para = doc.add_paragraph()
+        para.paragraph_format.space_after = Pt(5)
+        label_run = para.add_run(f"{label}: ")
+        label_run.bold = True
+        label_run.font.color.rgb = DARK
+        para.add_run(value)
 
 
 def build_doc() -> None:

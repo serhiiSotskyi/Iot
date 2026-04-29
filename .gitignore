@@ -11,9 +11,6 @@ venv/
 # JetBrains IDE
 .idea/
 
-# Claude Code workspace state
-.claude/
-
 reports/rendered_report/
 reports/ql/
 reports/pdf_pages_test/

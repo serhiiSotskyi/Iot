@@ -2,7 +2,7 @@
 
 Run from the repo root:
 
-    python -m unittest bridge.test_serial_to_http
+    python -m unittest tests.bridge.test_serial_to_http
 
 These tests do not open a serial port, do not start an HTTP session, and
 do not need any of the runtime dependencies — only the standard library.
@@ -24,7 +24,8 @@ for stub_name in ("serial", "requests"):
     if stub_name not in sys.modules:
         sys.modules[stub_name] = types.ModuleType(stub_name)
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(REPO_ROOT, "bridge"))
 from serial_to_http import infer_control_endpoint, parse_json_line, select_endpoint  # noqa: E402
 
 
