@@ -141,7 +141,7 @@ The following table walks each element against only the STRIDE categories that t
 | E1 Operator | T03 | — | T04 | — | — | — |
 | E2 Attacker | (threat actor; no threats *to* this element) | | | | | |
 | P1 Firmware | covered by physical scope | — | covered qualitatively | low (results only) | sensor-init failure (now mitigated) | low (no remote attack surface) |
-| P2 Bridge | identity asserted via INGEST_TOKEN | host-bound | logs only to stdout | `--verbose` payload leak | T08 | runs as user, low |
+| P2 Bridge | identity asserted via `BRIDGE_API_TOKEN` | host-bound | logs only to stdout | `--verbose` payload leak | T08 | runs as user, low |
 | P3 Web app | T01 | T02 | T04 | T05 | T07 | T10, T11 |
 | P4 Browser | T03 | React-default escaping; low | T04 | browser cache | F4 polling load | XSS surface low (JSON.stringify + React) |
 | DS1 Postgres | — | parameterised queries | T04 | T06 | partial via T07 | T11 |
@@ -171,7 +171,7 @@ Each threat has a stable ID, a DFD anchor, a CVSS v3.1 base vector, an estimated
 - **DFD anchor:** P3 (Spoofing)
 - **Description:** An attacker on the LAN (E2) posts forged events to `/api/movement`, faking pick activity or polluting the session timeline.
 - **CVSS v3.1:** `AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:L` → **6.8 (Medium)**
-- **Mitigation:** Optional bearer-token auth in `web/app/api/movement/route.js`, enforced when `INGEST_TOKEN` is set in the environment. Bridge sends the matching header via `--ingest-token`.
+- **Mitigation:** Bearer-token auth in `web/app/api/movement/route.js` via the shared helper `web/lib/bearerAuth.js`, enforced when `BRIDGE_API_TOKEN` is set in the environment (and required by `docker-compose.yml`). Constant-time comparison via `node:crypto.timingSafeEqual`. The bridge sends the token from `BRIDGE_API_TOKEN` (or `--api-token`).
 - **Residual:** If the token is left blank for an open demo, any LAN client is accepted.
 
 ### T02 — Payload tampering on POST
@@ -209,10 +209,10 @@ Each threat has a stable ID, a DFD anchor, a CVSS v3.1 base vector, an estimated
 ### T06 — Default Postgres credential
 
 - **DFD anchor:** DS1 (Information Disclosure / Elevation of Privilege)
-- **Description:** `docker-compose.yml` carries `iot_demo_password` as the default Postgres password. The container exposes port 5432 on the host, so anyone on the LAN can attempt connections if `.env` is missing.
-- **CVSS v3.1:** `AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` → **9.0 (Critical)** if the default is in use; **N/A** once `.env` provides a strong password.
-- **Mitigation:** `.env` (gitignored) now contains a 32-character random alphanumeric password generated for the submission and is loaded by Docker Compose, overriding the default. `.env.example` documents the override expectation.
-- **Residual:** A future operator who runs `docker compose up` *without* providing `.env` gets the weak default. The high CVSS score evaporates the moment `.env` is in place.
+- **Description:** `docker-compose.yml` carries `iot_demo_password` as the default Postgres password. Without further hardening, the container would expose port 5432 on every host interface, so anyone on the LAN could attempt connections.
+- **CVSS v3.1:** `AV:A/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` → **9.0 (Critical)** if the default is in use and the port is LAN-reachable; **N/A** once `.env` provides a strong password and the port binding is loopback-only.
+- **Mitigation:** Two layers. (1) `.env` (gitignored) contains a 32-character random alphanumeric password loaded by Docker Compose, overriding the default. (2) The Postgres host port binding in `docker-compose.yml` is now `127.0.0.1:${POSTGRES_HOST_PORT}:5432`, restricting connections to the gateway host's loopback interface so LAN clients (E2) can no longer reach the database directly.
+- **Residual:** A future operator who runs `docker compose up` *without* providing `.env` gets the weak default — but only locally on the host. The high CVSS score evaporates the moment `.env` is in place.
 
 ### T07 — Ingest flood (DoS)
 
@@ -235,8 +235,12 @@ Each threat has a stable ID, a DFD anchor, a CVSS v3.1 base vector, an estimated
 - **DFD anchor:** F3 / F5 (Tampering / Denial of Service)
 - **Description:** A LAN attacker injects a `stopBridge: true` response on F3, or a forged POST to `/api/sessions/current/complete` on F5, halting warehouse pick operations or destroying in-flight session state.
 - **CVSS v3.1:** `AV:A/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:H` → **7.1 (High)**
-- **Mitigation:** Partial. The control endpoint is read-only and returns small payloads, limiting the blast radius. The session-complete logic refuses to save a session that hasn't passed both authentication gates, so a forged early stop is not weaponised into bad data — it just deletes the in-flight session.
-- **Residual:** A determined attacker can repeatedly force-stop active picks. TLS + token auth on F3 and F5 is the proper defence; both are inherited if T05 is fixed.
+- **Mitigation:** Partial, on three axes. (1) `/api/bridge/control` (F3) requires `BRIDGE_API_TOKEN`; an attacker without the token cannot inject a `stopBridge: true` response. (2) `/api/sessions/current/complete` (F5) requires either a valid operator session cookie or `ADMIN_API_TOKEN`; route-level enforcement is in `web/app/api/sessions/current/complete/route.js`. (3) The control endpoint is read-only and returns small payloads, and the session-complete logic refuses to save a session that hasn't passed both authentication gates, so a successful forged early stop is not weaponised into bad data — it just deletes the in-flight session.
+- **Residual:** Token replay over plaintext HTTP is still possible if a LAN attacker has captured the bearer header. TLS at the proxy (T05 fix) closes that.
+
+#### Why the Stop endpoint accepts *either* the cookie or the bearer token
+
+`/api/sessions/current/complete` is the only mutation endpoint with two legitimate caller types: the **operator's browser** (authenticated through `/api/auth/login` and carrying the HMAC-signed `iot_session` cookie) and **external automation** (cleanup scripts, scheduled tasks, integration tests) that has no browser session to attach a cookie to. Requiring *both* a valid cookie *and* a bearer token on every call would force a logged-in operator to type the deployment's admin token on every Stop press — friction without a security gain, since an operator who has already proven knowledge of `DASHBOARD_PASSWORD` is at least as trusted as the holder of `ADMIN_API_TOKEN`. The route therefore accepts whichever is present and rejects only when *neither* validates. This is an ergonomics decision, not a capability one: each path grants identical authority on this single endpoint, and both are gated behind credentials issued at deployment time.
 
 ### T10 — Container running as root (Elevation of Privilege)
 
@@ -274,7 +278,7 @@ Each threat has a stable ID, a DFD anchor, a CVSS v3.1 base vector, an estimated
 | T03 Unauthenticated dashboard | E1 / P4 | S | 7.1 | **High** | Mitigated when `DASHBOARD_PASSWORD` is set |
 | T05 Plaintext HTTP | F2/F3/F4/F5 | I, T | 7.1 | **High** | Accepted residual; TLS-at-proxy is recommended |
 | T09 MitM control-plane injection | F3 / F5 | T, D | 7.1 | **High** | Partial mitigation; same fix as T05 |
-| T01 Unauth ingest spoofing | P3 | S | 6.8 | Medium | Mitigated (opt-in `INGEST_TOKEN`) |
+| T01 Unauth ingest spoofing | P3 | S | 6.8 | Medium | Mitigated (`BRIDGE_API_TOKEN` required) |
 | T02 Payload tampering | F2 | T | 6.5 | Medium | Mitigated (validation + physical bounds) |
 | T12 Dashboard login brute-force | E1 / P3 | S | 6.5 | Medium | Mitigated (rate-limit + signed cookie); contingent on strong password |
 | T11 Overprivileged DB role | DS1 | E | 6.0 | Medium | Partial (parameterised queries); role split pending |
@@ -289,10 +293,13 @@ The five **High** or **Critical** findings (T06, T10, T07, T03, T05, T09) are th
 
 | Mitigation | File | Threat |
 |---|---|---|
-| Bearer-token auth on ingest | `web/app/api/movement/route.js`, `bridge/serial_to_http.py` | T01 |
+| Bearer-token auth helper (constant-time) | `web/lib/bearerAuth.js` | T01, T09 |
+| `BRIDGE_API_TOKEN` enforced on ingest and bridge control | `web/app/api/movement/route.js`, `web/app/api/bridge/control/route.js`, `bridge/serial_to_http.py` | T01, T09 |
+| `ADMIN_API_TOKEN` (or session cookie) on Stop endpoint | `web/app/api/sessions/current/complete/route.js` | T09 |
 | Body-size cap, event whitelist, type checks, physical bounds | `web/app/api/movement/route.js` | T02 |
 | Per-IP rate limit (shared primitive) | `web/lib/rateLimit.js`, `web/app/api/movement/route.js`, `web/app/api/auth/login/route.js` | T07, T12 |
 | Operator login + signed session cookie | `web/lib/auth.js`, `web/middleware.js`, `web/app/api/auth/login/route.js`, `web/app/login/page.js` | T03 |
+| Postgres bound to host loopback (127.0.0.1) | `docker-compose.yml` | T06 |
 | Bridge silence timeout | `bridge/serial_to_http.py` | T08 |
 | Bridge retry queue with backoff | `bridge/serial_to_http.py` | T07 (resilience) |
 | Drop/downsample debug events | `bridge/serial_to_http.py` | T07 |
@@ -300,7 +307,7 @@ The five **High** or **Critical** findings (T06, T10, T07, T03, T05, T09) are th
 | Non-root container | `web/Dockerfile` | T10 |
 | Healthcheck on web service | `docker-compose.yml` | operability |
 | In-memory fallback gated to non-production | `web/lib/eventStore.js` | T11 (data-loss footgun) |
-| Strong DB password and ingest token | `.env` (gitignored), `.env.example` | T06, T01 |
+| Strong DB password and `BRIDGE_API_TOKEN` | `.env` (gitignored), `.env.example` | T06, T01 |
 | Parameterised SQL throughout | `web/lib/eventStore.js` | T11 |
 
 ---

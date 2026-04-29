@@ -29,22 +29,37 @@ and UI.
 ## Layout
 
 ```
-arduino/voice_colour_motion_demo/   firmware sketch (state machine + 3 model invocations)
+arduino/voice_colour_motion_demo/        firmware sketch (state machine + 3 model invocations)
 arduino/libraries/combined_inferencing/  one Edge Impulse SDK + 3 impulse handles
-bridge/serial_to_http.py            USB-serial → HTTP bridge with retry queue
-web/                                Next.js dashboard + Postgres-backed event store
-docs/                               architecture, design decisions, threat model, model metrics
-docs/diagrams/                      four .drawio diagrams for the report
+bridge/serial_to_http.py                 USB-serial → HTTP bridge with retry queue
+web/                                     Next.js dashboard + Postgres-backed event store
+docs/                                    architecture, design decisions, threat model, model metrics
+docs/diagrams/                           four .drawio diagrams for the report
+
+serhiisotskyi-project-1_inferencing/         Serhii's original EI export — voice keyword (project 970121)
+pepstee-project-1_inferencing/               Artiom's original EI export — colour (project 970107)
+joelshore-project-1-cpp-mcu-v1-impulse-#8/   Joel's original EI export — motion (project 928825)
 ```
+
+The three per-author directories at the repository root are the
+**Edge Impulse exports** each member produced from their own EI Studio
+account, retained as individual-contribution evidence. The firmware
+compiles against `arduino/libraries/combined_inferencing/`, not these.
+See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for the per-author model
+breakdown (project IDs, labels, sensor configurations).
 
 ## Run it
 
 ### 1. Bring up the dashboard
 
 ```bash
-cp .env.example .env       # then fill in DASHBOARD_PASSWORD and SESSION_SECRET if you want auth
+cp .env.example .env      
 docker compose up -d --build
 ```
+
+`BRIDGE_API_TOKEN` and `ADMIN_API_TOKEN` are required by `docker-compose.yml`;
+the stack will refuse to start if either is unset. Generate values with
+`openssl rand -hex 24`.
 
 If host port 3000 or 5432 is already in use:
 
@@ -72,11 +87,14 @@ the board and upload.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install pyserial requests
+BRIDGE_API_TOKEN="$(grep ^BRIDGE_API_TOKEN .env | cut -d= -f2)" \
 python bridge/serial_to_http.py \
     --port /dev/ttyACM0 \
-    --url http://localhost:3000/api/movement \
-    --ingest-token "$(grep ^INGEST_TOKEN .env | cut -d= -f2)"
+    --url http://localhost:3000/api/movement
 ```
+
+The bridge picks up `BRIDGE_API_TOKEN` from the environment (or accepts
+`--api-token <token>` explicitly).
 
 Adjust `--port` to your serial device. On Linux the user must be in the
 `dialout` group to read `/dev/ttyACM*`.
@@ -122,12 +140,44 @@ See `.env.example` for the full list. Highlights:
 | Variable | Purpose |
 |---|---|
 | `POSTGRES_PASSWORD` | Postgres password — replace the default before any deployment |
-| `INGEST_TOKEN` | Bearer token required on `/api/movement` if set |
+| `BRIDGE_API_TOKEN` | **Required.** Bearer token the bridge sends to `/api/movement` and `/api/bridge/control` |
+| `ADMIN_API_TOKEN` | **Required.** Bearer token accepted by `/api/sessions/current/complete` for external clients (the logged-in dashboard uses its session cookie instead) |
 | `INGEST_RATE_LIMIT_PER_MIN` | Per-IP rate limit on ingest (0 = off) |
 | `DASHBOARD_PASSWORD` | Operator login password — when set, the dashboard is gated |
 | `SESSION_SECRET` | HMAC key for the session cookie. Generate with `openssl rand -hex 32` |
 | `POSTGRES_HOST_PORT` | Override if 5432 is busy on your host |
 | `WEB_PORT` | Override if 3000 is busy on your host |
+
+## Testing & verification
+
+Two verification surfaces exist; together they cover the auth boundary
+and the bridge's input parsing.
+
+**1. `./verify.sh` — end-to-end auth assertions** (requires the stack to be running):
+
+```bash
+./verify.sh http://localhost:3000
+```
+
+The script reads `BRIDGE_API_TOKEN`, `ADMIN_API_TOKEN`, and `DASHBOARD_PASSWORD`
+from `.env`, then makes ~15 `curl` assertions against the live API:
+unauthed dashboard hits redirect to `/login`, login with the wrong
+password returns 401, login with the correct password sets the
+`iot_session` cookie, ingest and bridge-control endpoints reject
+unauthed requests but accept the bridge token, and the Stop endpoint
+accepts *either* the operator session cookie *or* `ADMIN_API_TOKEN`.
+Exit code is the number of failed assertions.
+
+**2. `python -m unittest bridge.test_serial_to_http` — pure-logic unit tests**:
+
+```bash
+python -m unittest bridge.test_serial_to_http -v
+```
+
+10 tests over `parse_json_line` (handles boot banners, malformed JSON,
+non-object payloads, whitespace) and `infer_control_endpoint` (URL
+inference; query-string drop). Stubs out `pyserial` and `requests` so
+no install is needed beyond Python 3.11+.
 
 ## Status
 
@@ -135,4 +185,5 @@ This is a university IoT project, intentionally scoped for a controlled
 lab demo on a trusted LAN. The threat model in `docs/threat-model.md`
 records what is and isn't mitigated, with explicit out-of-scope items
 (TLS termination, per-operator identity, firmware code-signing) listed
-as recommended next steps.
+as recommended next steps. Pre-submission tasks remaining for each
+group member are listed in [`TODO.md`](TODO.md).
