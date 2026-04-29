@@ -18,6 +18,7 @@ import serial
 MAX_RETRY_QUEUE = 500
 SERIAL_SILENCE_EXIT_SECONDS = 60.0
 DEBUG_EVENT_TYPES = frozenset({"voice_debug", "colour_debug"})
+AUTH_EVENT_NAME = "colour_authenticated"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,6 +40,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--endpoint",
         default=os.getenv("POST_ENDPOINT", "http://localhost:3000/api/movement"),
         help="HTTP endpoint that receives each JSON event.",
+    )
+    parser.add_argument(
+        "--auth-endpoint",
+        default=os.getenv("AUTH_ENDPOINT"),
+        help=(
+            "Optional HTTP endpoint for colour_authenticated events. "
+            "When set, colour_authenticated events are POSTed here instead of --endpoint. "
+            "Defaults to --endpoint if not provided."
+        ),
     )
     parser.add_argument(
         "--control-endpoint",
@@ -122,6 +132,16 @@ def parse_json_line(line: str) -> dict[str, Any] | None:
     return payload
 
 
+def select_endpoint(
+    payload: dict[str, Any],
+    default_endpoint: str,
+    auth_endpoint: str | None,
+) -> str:
+    if payload.get("event") == AUTH_EVENT_NAME and auth_endpoint:
+        return auth_endpoint
+    return default_endpoint
+
+
 def post_payload(
     session: requests.Session,
     endpoint: str,
@@ -166,8 +186,7 @@ def post_payload(
 
 def flush_retry_queue(
     session: requests.Session,
-    endpoint: str,
-    queue: Deque[dict[str, Any]],
+    queue: Deque[tuple[str, dict[str, Any]]],
     timeout: float,
     verbose: bool,
 ) -> tuple[bool, bool]:
@@ -177,7 +196,7 @@ def flush_retry_queue(
     """
     drained_any = False
     while queue:
-        payload = queue[0]
+        endpoint, payload = queue[0]
         should_continue, delivered = post_payload(session, endpoint, payload, timeout, verbose)
         if not delivered:
             return should_continue, drained_any
@@ -229,6 +248,11 @@ def main() -> int:
         f"[bridge] opening {args.port} @ {args.baud}, forwarding to {args.endpoint}",
         flush=True,
     )
+    if args.auth_endpoint:
+        print(
+            f"[bridge] {AUTH_EVENT_NAME} events forwarded to {args.auth_endpoint}",
+            flush=True,
+        )
 
     session = requests.Session()
     if args.api_token:
@@ -238,7 +262,7 @@ def main() -> int:
     if control_endpoint:
         print(f"[bridge] polling control endpoint {control_endpoint}", flush=True)
 
-    retry_queue: Deque[dict[str, Any]] = deque(maxlen=MAX_RETRY_QUEUE)
+    retry_queue: Deque[tuple[str, dict[str, Any]]] = deque(maxlen=MAX_RETRY_QUEUE)
     queue_full_warned = False
     next_retry_at = 0.0
     retry_failures = 0
@@ -263,7 +287,7 @@ def main() -> int:
                 # Drain any queued events with exponential backoff up to 30s.
                 if retry_queue and now >= next_retry_at:
                     should_continue, drained_any = flush_retry_queue(
-                        session, args.endpoint, retry_queue, args.timeout, args.verbose
+                        session, retry_queue, args.timeout, args.verbose
                     )
                     if not should_continue:
                         return 0
@@ -310,18 +334,21 @@ def main() -> int:
                             flush=True,
                         )
                         queue_full_warned = True
-                    retry_queue.append(payload)
+                    retry_queue.append(
+                        (select_endpoint(payload, args.endpoint, args.auth_endpoint), payload)
+                    )
                     continue
 
+                target = select_endpoint(payload, args.endpoint, args.auth_endpoint)
                 should_continue, delivered = post_payload(
                     session,
-                    args.endpoint,
+                    target,
                     payload,
                     args.timeout,
                     args.verbose,
                 )
                 if not delivered:
-                    retry_queue.append(payload)
+                    retry_queue.append((target, payload))
                     next_retry_at = now + 1
                 if not should_continue:
                     return 0

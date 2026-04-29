@@ -5,7 +5,7 @@
  *
  * State flow:
  *   WAITING_FOR_VOICE  -> Edge Impulse voice model detects "start"
- *   WAITING_FOR_COLOUR -> Edge Impulse colour model detects "green"
+ *   WAITING_FOR_COLOUR -> Edge Impulse colour model classifies colour
  *   TRACKING_MOVEMENT  -> Edge Impulse movement model classifies board motion
  *
  * The board has no WiFi. It prints JSON lines to USB Serial at 115200 baud.
@@ -40,6 +40,7 @@ static const int VOICE_REQUIRED_STREAK = 1;
 static const float COLOUR_GREEN_THRESHOLD = 0.70f;
 static const int COLOUR_REQUIRED_STREAK = 3;
 static const unsigned long COLOUR_DEBUG_INTERVAL_MS = 300;
+static const char* DEVICE_ID = "tm-device-003";
 
 static const unsigned long MOVEMENT_OUTPUT_INTERVAL_MS = 250;
 static const float MOVEMENT_DIRECTION_THRESHOLD = 0.60f;
@@ -102,7 +103,7 @@ static float latestGz = 0.0f;
 // ---------------------------------------------------------------------------
 
 bool voiceDetectedStart();
-bool greenDetected();
+bool colourDetected(const char* &outColour, float &outConfidence);
 void sendMovementData();
 void printJsonEvent(const char* eventName);
 
@@ -128,6 +129,7 @@ static const char* findTopClassification(
 );
 static const char* stateName(SystemState state);
 static void printJsonBool(bool value);
+static void printIsoTimestamp();
 static void printSetupStatus();
 static void printVoiceDebug(const ei_impulse_result_t &result);
 static void printColourDebug(
@@ -179,13 +181,25 @@ void loop() {
       }
       break;
 
-    case WAITING_FOR_COLOUR:
-      if (greenDetected()) {
-        Serial.println("{\"event\":\"colour_authenticated\",\"colour\":\"green\"}");
+    case WAITING_FOR_COLOUR: {
+      const char *colourClass = nullptr;
+      float colourConfidence = 0.0f;
+
+      if (colourDetected(colourClass, colourConfidence)) {
+        Serial.print("{\"event\":\"colour_authenticated\",\"colour\":\"");
+        Serial.print(colourClass);
+        Serial.print("\",\"confidence\":");
+        Serial.print(colourConfidence, 5);
+        Serial.print(",\"device_id\":\"");
+        Serial.print(DEVICE_ID);
+        Serial.print("\",\"timestamp\":\"");
+        printIsoTimestamp();
+        Serial.println("\"}");
         resetMovementBuffer();
         currentState = TRACKING_MOVEMENT;
       }
       break;
+    }
 
     case TRACKING_MOVEMENT:
       sendMovementData();
@@ -273,7 +287,7 @@ bool voiceDetectedStart() {
   return true;
 }
 
-bool greenDetected() {
+bool colourDetected(const char* &outColour, float &outConfidence) {
   if (!colourReady) {
     return false;
   }
@@ -334,7 +348,13 @@ bool greenDetected() {
     lastColourDebugMs = millis();
   }
 
-  return greenStreak >= COLOUR_REQUIRED_STREAK;
+  if (greenStreak >= COLOUR_REQUIRED_STREAK) {
+    outColour = topLabel;
+    outConfidence = topConfidence;
+    return true;
+  }
+
+  return false;
 }
 
 void sendMovementData() {
@@ -709,6 +729,21 @@ static const char* stateName(SystemState state) {
 
 static void printJsonBool(bool value) {
   Serial.print(value ? "true" : "false");
+}
+
+static void printIsoTimestamp() {
+  // The board has no RTC, so emit uptime in an ISO-like T+ format.
+  // The bridge/backend can replace this with a wall-clock timestamp.
+  unsigned long now = millis();
+  unsigned long secs = now / 1000;
+  unsigned long frac = now % 1000;
+  Serial.print("T+");
+  Serial.print(secs);
+  Serial.print(".");
+  if (frac < 100) Serial.print("0");
+  if (frac < 10) Serial.print("0");
+  Serial.print(frac);
+  Serial.print("Z");
 }
 
 static void printSetupStatus() {
