@@ -30,7 +30,6 @@ services:
       HOSTNAME: 0.0.0.0
       PORT: 3000
       DATABASE_URL: postgres://${POSTGRES_USER:-iot_demo}:${POSTGRES_PASSWORD:-iot_demo_password}@postgres:5432/${POSTGRES_DB:-iot_demo}
-      INGEST_TOKEN: ${INGEST_TOKEN:-}
       INGEST_RATE_LIMIT_PER_MIN: ${INGEST_RATE_LIMIT_PER_MIN:-0}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
       SESSION_SECRET: ${SESSION_SECRET:-}

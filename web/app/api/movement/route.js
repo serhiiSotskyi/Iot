@@ -20,7 +20,7 @@ const KNOWN_EVENTS = new Set([
 const RATE_LIMIT_PER_MIN = Number(process.env.INGEST_RATE_LIMIT_PER_MIN ?? 0);
 
 export async function POST(request) {
-  const unauthorized = requireBearerToken(request, "BRIDGE_API_TOKEN", "INGEST_TOKEN");
+  const unauthorized = requireBearerToken(request, "BRIDGE_API_TOKEN");
   if (unauthorized) {
     return unauthorized;
   }

@@ -79,15 +79,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--ingest-token",
-        default=os.getenv("INGEST_TOKEN"),
-        help=(
-            "Optional bearer token sent as 'Authorization: Bearer <token>' "
-            "on each POST. Must match the web app's INGEST_TOKEN env var when "
-            "that protection is enabled."
-        ),
-    )
-    parser.add_argument(
         "--silence-timeout",
         type=float,
         default=float(os.getenv("SERIAL_SILENCE_TIMEOUT", str(SERIAL_SILENCE_EXIT_SECONDS))),
@@ -240,9 +231,8 @@ def main() -> int:
     )
 
     session = requests.Session()
-    api_token = args.api_token or args.ingest_token
-    if api_token:
-        session.headers["Authorization"] = f"Bearer {api_token}"
+    if args.api_token:
+        session.headers["Authorization"] = f"Bearer {args.api_token}"
     control_endpoint = args.control_endpoint or infer_control_endpoint(args.endpoint)
     next_control_check = 0.0
     if control_endpoint:

@@ -6,7 +6,8 @@ const PUBLIC_PATHS = new Set(["/login"]);
 const PUBLIC_API_PREFIXES = [
   "/api/auth/",
   "/api/movement",
-  "/api/bridge/control"
+  "/api/bridge/control",
+  "/api/sessions/current/complete"
 ];
 
 function isPublic(pathname) {

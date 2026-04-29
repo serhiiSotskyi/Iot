@@ -6,7 +6,7 @@ import { consumeBridgeControlState } from "../../../../lib/eventStore";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
-  const unauthorized = requireBearerToken(request, "BRIDGE_API_TOKEN", "INGEST_TOKEN");
+  const unauthorized = requireBearerToken(request, "BRIDGE_API_TOKEN");
   if (unauthorized) {
     return unauthorized;
   }
