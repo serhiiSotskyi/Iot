@@ -99,8 +99,8 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <mxCell id="threats_legend" value="&lt;b&gt;Where the threats land on this DFD&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;P3 (Web app)&lt;/b&gt; — T01 spoof ingest, T07 flood, T10 root container, T12 login brute-force&lt;br&gt;&lt;b&gt;F2 (USB serial)&lt;/b&gt; — T02 payload tampering&lt;br&gt;&lt;b&gt;F3 (HTTP)&lt;/b&gt; — T05 plaintext, T09 MitM control&lt;br&gt;&lt;b&gt;DS1 (Postgres)&lt;/b&gt; — T06 default credential, T11 overprivileged role&lt;br&gt;&lt;b&gt;E1/P4 (Operator/Dashboard)&lt;/b&gt; — T03 unauth dashboard (now mitigated)&lt;br&gt;&lt;b&gt;F1/P2 (Sensor I/O)&lt;/b&gt; — T08 silent serial death&lt;br&gt;&lt;b&gt;E1/P3/DS1&lt;/b&gt; — T04 repudiation (qualitative)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;" vertex="1" parent="1">
-          <mxGeometry x="800" y="730" width="540" height="50" as="geometry" />
+        <mxCell id="threats_legend" value="&lt;b&gt;Where the threats land on this DFD&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;P3 (Web app)&lt;/b&gt; — T01 spoof ingest, T07 flood, T10 root container, T12 login brute-force&lt;br&gt;&lt;b&gt;F2 (USB serial)&lt;/b&gt; — T02 payload tampering&lt;br&gt;&lt;b&gt;F3 (HTTP)&lt;/b&gt; — T05 plaintext, T09 MitM control&lt;br&gt;&lt;b&gt;DS1 (Postgres)&lt;/b&gt; — T06 default credential, T11 overprivileged role&lt;br&gt;&lt;b&gt;E1/P4 (Operator/Dashboard)&lt;/b&gt; — T03 unauth dashboard (now mitigated by iot_session cookie)&lt;br&gt;&lt;b&gt;F1/P2 (Sensor I/O)&lt;/b&gt; — T08 silent serial death (60 s watchdog)&lt;br&gt;&lt;b&gt;E1/P3/DS1&lt;/b&gt; — T04 repudiation (qualitative — raw events table preserved)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=10;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="780" y="720" width="560" height="170" as="geometry" />
         </mxCell>
 
       </root>
