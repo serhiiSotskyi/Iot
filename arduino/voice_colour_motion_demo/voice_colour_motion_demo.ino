@@ -27,8 +27,8 @@
 
 static const bool DEBUG_SERIAL = false;
 static const bool EMIT_SETUP_STATUS = true;
-static const bool EMIT_VOICE_DEBUG = false;
-static const bool EMIT_COLOUR_DEBUG = false;
+static const bool EMIT_VOICE_DEBUG = true;
+static const bool EMIT_COLOUR_DEBUG = true;
 
 static const float VOICE_START_THRESHOLD = 0.75f;
 static const float VOICE_RELEASE_THRESHOLD = 0.35f;
@@ -111,7 +111,6 @@ void printJsonEvent(const char* eventName);
 // ---------------------------------------------------------------------------
 
 static void debugLog(const char* message);
-static void emitInitError(const char* message);
 static bool initVoiceModule();
 static bool initColourModule();
 static bool initImuModule();
@@ -422,7 +421,7 @@ void printJsonEvent(const char* eventName) {
 static bool initVoiceModule() {
   run_classifier_init(&voice_impulse_handle);
   if (!microphoneInferenceStart(VOICE_MODEL_SLICE_SIZE)) {
-    emitInitError("Voice buffer allocation failed.");
+    debugLog("Voice buffer allocation failed.");
     return false;
   }
 
@@ -431,7 +430,7 @@ static bool initVoiceModule() {
 
 static bool initColourModule() {
   if (!APDS.begin()) {
-    emitInitError("APDS-9960 init failed.");
+    debugLog("APDS-9960 init failed.");
     return false;
   }
 
@@ -440,7 +439,7 @@ static bool initColourModule() {
 
 static bool initImuModule() {
   if (!IMU.begin()) {
-    emitInitError("LSM9DS1 init failed.");
+    debugLog("LSM9DS1 init failed.");
     return false;
   }
 
@@ -654,14 +653,6 @@ static void debugLog(const char* message) {
   }
 
   Serial.print("{\"event\":\"debug\",\"message\":\"");
-  Serial.print(message);
-  Serial.println("\"}");
-}
-
-// Init failures must reach the operator regardless of DEBUG_SERIAL — they
-// indicate the board cannot perform its job, not optional debug output.
-static void emitInitError(const char* message) {
-  Serial.print("{\"event\":\"init_error\",\"message\":\"");
   Serial.print(message);
   Serial.println("\"}");
 }
