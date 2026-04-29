@@ -38,7 +38,7 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:3000/api/latest"]
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:3000/login"]
       interval: 15s
       timeout: 5s
       retries: 5

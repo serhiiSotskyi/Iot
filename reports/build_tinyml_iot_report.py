@@ -15,9 +15,14 @@ from docx.shared import Cm, Inches, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parents[1]
 SCREENSHOTS = ROOT / "screenshots"
+UPDATED_SCREENSHOTS = SCREENSHOTS / "updated screenshots"
 REPORT_DIR = ROOT / "reports"
+GENERATED_ASSETS = REPORT_DIR / "generated_assets"
 DOCX_PATH = REPORT_DIR / "tinyml_iot_demo_report.docx"
-ARCH_PATH = SCREENSHOTS / "19_architecture_diagram.png"
+ARCH_SOURCE_PATH = ROOT / "docs/diagrams/system-architecture.png"
+ARCH_PATH = GENERATED_ASSETS / "system-architecture-report.png"
+DASHBOARD_REPLAY_PATH = GENERATED_ASSETS / "dashboard-session-replay.png"
+MOVEMENT_CHART_PATH = GENERATED_ASSETS / "dashboard-movement-chart.png"
 
 
 ACCENT = RGBColor(28, 103, 88)
@@ -90,94 +95,36 @@ def arrow(draw: ImageDraw.ImageDraw, start, end, label: str = ""):
 
 
 def generate_architecture_diagram() -> None:
-    width, height = 1800, 980
-    img = Image.new("RGB", (width, height), (246, 250, 249))
+    """Prepare a report-ready copy of the maintained architecture diagram."""
+    GENERATED_ASSETS.mkdir(parents=True, exist_ok=True)
+    img = Image.open(ARCH_SOURCE_PATH).convert("RGB")
     draw = ImageDraw.Draw(img)
-    title_font = font(38, bold=True)
-    subtitle_font = font(20)
-    draw.text((70, 48), "TinyML IoT demo architecture and data flow", font=title_font, fill=(18, 30, 47))
-    draw.text(
-        (72, 102),
-        "Voice, colour, and movement inference run on the board; session storage and replay run in the web/cloud layer.",
-        font=subtitle_font,
-        fill=(83, 96, 112),
-    )
 
-    draw_rounded_box(
-        draw,
-        (70, 190, 410, 390),
-        (232, 245, 241),
-        (28, 103, 88),
-        "Arduino Nano 33 BLE Sense\nPDM microphone\nAPDS9960 colour sensor\nLSM9DS1 IMU",
-        (18, 30, 47),
-        True,
-    )
-    draw_rounded_box(
-        draw,
-        (510, 170, 880, 420),
-        (255, 255, 255),
-        (80, 129, 150),
-        "Firmware state machine\nWAITING_FOR_VOICE\nWAITING_FOR_COLOUR\nTRACKING_MOVEMENT\nCombined Edge Impulse inference layer",
-        (18, 30, 47),
-        True,
-    )
-    draw_rounded_box(
-        draw,
-        (980, 200, 1285, 390),
-        (255, 255, 255),
-        (80, 129, 150),
-        "Python serial bridge\nReads JSON lines\nForwards HTTP events\nPolls stop control",
-        (18, 30, 47),
-        True,
-    )
-    draw_rounded_box(
-        draw,
-        (1380, 160, 1725, 430),
-        (232, 245, 241),
-        (28, 103, 88),
-        "Next.js web API\nPOST /api/movement\nGET /api/latest\nGET /api/sessions\nPOST /complete",
-        (18, 30, 47),
-        True,
-    )
-    draw_rounded_box(
-        draw,
-        (1380, 560, 1725, 760),
-        (255, 255, 255),
-        (80, 129, 150),
-        "PostgreSQL in Docker\nsessions\nevents\nmovement_samples\nrecording_state",
-        (18, 30, 47),
-        True,
-    )
-    draw_rounded_box(
-        draw,
-        (980, 570, 1285, 760),
-        (255, 255, 255),
-        (80, 129, 150),
-        "Browser dashboard\nLive monitor\nRecorded sessions\nStop current session\nMovement replay chart",
-        (18, 30, 47),
-        True,
-    )
+    # The source PNG was exported with two stale route labels. Keep the diagram
+    # itself, but patch the API route list used in the submitted report.
+    draw.rectangle((800, 310, 1065, 425), fill=(250, 252, 255))
+    route_font = font(13)
+    route_lines = [
+        "POST /api/movement",
+        "GET /api/latest, /api/sessions",
+        "GET /api/sessions/[id]",
+        "GET /api/bridge/control",
+        "POST /api/sessions/current/complete",
+        "POST /api/auth/login, /api/auth/logout",
+    ]
+    y = 313
+    for line in route_lines:
+        draw.text((820, y), f"- {line}", font=route_font, fill=(21, 38, 58))
+        y += 15
 
-    arrow(draw, (410, 290), (510, 290), "sensor readings")
-    arrow(draw, (880, 290), (980, 290), "USB serial JSON @ 115200")
-    arrow(draw, (1285, 290), (1380, 290), "Bearer BRIDGE_API_TOKEN")
-    arrow(draw, (1555, 430), (1555, 560), "SQL persistence")
-    arrow(draw, (1380, 660), (1285, 660), "public reads + admin stop")
-
-    draw.rounded_rectangle((925, 120, 1335, 470), radius=26, outline=(198, 92, 61), width=3)
-    draw.text((948, 130), "Trust boundary: laptop bridge -> HTTP API", font=font(17, bold=True), fill=(120, 61, 42))
-    draw.rounded_rectangle((1350, 130, 1755, 795), radius=26, outline=(198, 92, 61), width=3)
-    draw.text((1372, 805), "Docker/server boundary", font=font(17, bold=True), fill=(120, 61, 42))
-
-    legend_y = 875
-    draw.rounded_rectangle((70, legend_y, 1725, 935), radius=16, fill=(231, 237, 241), outline=(196, 207, 214))
-    draw.text(
-        (92, legend_y + 17),
-        "Security controls: bridge ingest and bridge control use BRIDGE_API_TOKEN; dashboard stop uses ADMIN_API_TOKEN; Postgres is bound to localhost in Docker Compose.",
-        font=font(20),
-        fill=(18, 30, 47),
-    )
     img.save(ARCH_PATH)
+
+
+def prepare_report_screenshot_crops() -> None:
+    GENERATED_ASSETS.mkdir(parents=True, exist_ok=True)
+    dashboard = Image.open(UPDATED_SCREENSHOTS / "dashboard_full_with_recorded_sessions.png")
+    dashboard.crop((480, 50, 1440, 1010)).save(DASHBOARD_REPLAY_PATH)
+    dashboard.crop((825, 735, 1435, 1005)).save(MOVEMENT_CHART_PATH)
 
 
 def set_cell_fill(cell, fill: str) -> None:
@@ -363,7 +310,7 @@ def cover(doc: Document) -> None:
         ("Student", "Sergey Sotskiy"),
         ("Module", "Internet of Things / Cloud Computing coursework"),
         ("Report split", "Personal section: voice recognition TinyML. Group section: three-model integration, bridge, dashboard, Docker, and security."),
-        ("Date", "28 April 2026"),
+        ("Date", "29 April 2026"),
     ]
     for label, value in meta:
         para = doc.add_paragraph()
@@ -387,7 +334,7 @@ def executive_summary(doc: Document) -> None:
     )
     p(
         doc,
-        "My personal contribution was the voice recognition TinyML component. I trained and validated a keyword model in Edge Impulse, assessed its validation and on-device performance, and integrated it into the firmware state machine so a confident start detection advances the system from WAITING_FOR_VOICE to WAITING_FOR_COLOUR. The group contribution merged three Edge Impulse models into one firmware build, built the serial-to-HTTP bridge, implemented session storage and replay, added Docker deployment, and applied a STRIDE-based security layer with bearer-token protected mutation APIs.",
+        "My personal contribution was the voice recognition TinyML component. I trained and validated a keyword model in Edge Impulse, assessed its validation and on-device performance, and integrated it into the firmware state machine so a confident start detection advances the system from WAITING_FOR_VOICE to WAITING_FOR_COLOUR. The group contribution merged three Edge Impulse models into one firmware build, built the serial-to-HTTP bridge, implemented session storage and replay, added Docker deployment, and applied a STRIDE-based security layer with bearer-token protected ingest/control APIs and HMAC-signed dashboard sessions.",
     )
 
 
@@ -490,16 +437,16 @@ def architecture_section(doc: Document) -> None:
     add_figure(
         doc,
         ARCH_PATH,
-        "Fig. G1. End-to-end architecture showing Arduino, serial bridge, web API, Postgres, Docker, and dashboard users.",
+        "Fig. G1. End-to-end architecture showing Arduino sensing, the serial bridge, web API routes, Postgres storage, dashboard auth, and the operator workflow.",
         6.5,
     )
     p(
         doc,
-        "The bridge layer runs on the laptop connected to the board. It opens the serial port at 115200 baud, ignores non-JSON lines, validates that each line is a JSON object, and posts valid payloads to the configured HTTP ingest endpoint. In the default deployment this is POST /api/movement, while colour_authenticated events can optionally be routed to a separate authorisation endpoint with --auth-endpoint. It also polls GET /api/bridge/control so the dashboard can request a clean bridge shutdown. This design was chosen because serial is reliable for the Nano board during a demo, while Python and HTTP are easier to debug than adding networking directly to the firmware.",
+        "The bridge layer runs on the laptop connected to the board. It opens the serial port at 115200 baud, ignores non-JSON lines, validates that each line is a JSON object, and posts valid payloads to POST /api/movement with BRIDGE_API_TOKEN on deployed runs. It also polls GET /api/bridge/control so the dashboard can request a clean bridge shutdown. The bridge has a bounded retry queue with backoff for transient HTTP failures, a silence timeout for dead serial streams, and a serial reconnect retry path for USB reset or macOS device reconfiguration errors. This design was chosen because serial is reliable for the Nano board during a demo, while Python and HTTP are easier to debug than adding networking directly to the firmware.",
     )
     p(
         doc,
-        "The web layer is a Next.js application. Route handlers implement the ingestion, latest-event, session-list, session-detail, complete-session, and bridge-control APIs. Next.js route handlers are designed for custom request handlers in the app directory (Next.js, n.d.). The dashboard polls the public read endpoints and renders the latest event, session state, timeline, and movement chart. When DATABASE_URL is configured, the event store persists data in PostgreSQL; without it, the same code falls back to memory for fast local testing. PostgreSQL was selected because session events and movement samples naturally fit relational tables with timestamps and foreign keys (PostgreSQL Global Development Group, n.d.).",
+        "The web layer is a Next.js application. Route handlers implement ingestion, latest-event, session-list, session-detail, complete-session, bridge-control, login, and logout APIs. Next.js route handlers are designed for custom request handlers in the app directory (Next.js, n.d.). When DASHBOARD_PASSWORD is configured, middleware gates the dashboard and read APIs behind an HMAC-signed session cookie issued by POST /api/auth/login. When DATABASE_URL is configured, the event store persists data in PostgreSQL; without it, the same code falls back to memory for fast local testing. PostgreSQL was selected because session events and movement samples naturally fit relational tables with timestamps and foreign keys (PostgreSQL Global Development Group, n.d.).",
     )
 
 
@@ -511,8 +458,8 @@ def firmware_section(doc: Document) -> None:
     )
     add_figure(
         doc,
-        SCREENSHOTS / "arduino_state_machine_bridge_output_voice.png",
-        "Fig. G3. Bridge output showing the voice phase and transition after start.",
+        UPDATED_SCREENSHOTS / "brisge_listeting_fpr_voice_then_detecting_start_and_moving_to_color_with_setup_status.png",
+        "Fig. G2. Bridge output showing setup status, voice debug, and the start transition into colour authentication.",
         6.3,
     )
     p(
@@ -525,8 +472,8 @@ def firmware_section(doc: Document) -> None:
     )
     add_figure(
         doc,
-        SCREENSHOTS / "arduino_state_machine_bridge_output_colour.png",
-        "Fig. G4. Bridge output showing colour authentication events.",
+        UPDATED_SCREENSHOTS / "bridge_listening_colors_then_detecting_green_and_noving_to_movemnt.png",
+        "Fig. G3. Bridge output showing colour debug, green tag authentication, and transition into movement tracking.",
         6.3,
     )
     p(
@@ -535,8 +482,8 @@ def firmware_section(doc: Document) -> None:
     )
     add_figure(
         doc,
-        SCREENSHOTS / "arduino_state_machine_bridge_output_movement.png",
-        "Fig. G5. Bridge output showing movement classification events.",
+        UPDATED_SCREENSHOTS / "bridge_lcitens_movement.png",
+        "Fig. G4. Bridge output showing movement collection and classified handling direction events.",
         6.3,
     )
     p(
@@ -549,7 +496,7 @@ def bridge_dashboard_section(doc: Document) -> None:
     heading(doc, "5. Bridge, dashboard, and data recording")
     p(
         doc,
-        "The Python bridge is the boundary between embedded serial output and the web system. It uses pyserial to read the board, parses only lines that begin with JSON object syntax, and uses the requests library to POST each event. Verbose mode prints the HTTP status and compact JSON payload, which made it possible to debug the firmware sequence without opening the Arduino Serial Monitor. Only one process can own the serial port at a time, so the bridge and Serial Monitor are not run together.",
+        "The Python bridge is the boundary between embedded serial output and the web system. It uses pyserial to read the board, parses only lines that begin with JSON object syntax, and uses the requests library to POST each event. Verbose mode prints the HTTP status and compact JSON payload, which made it possible to debug the firmware sequence without opening the Arduino Serial Monitor. To keep normal sessions readable, voice_debug and colour_debug are dropped by default unless --debug-downsample is set. Only one process can own the serial port at a time, so the bridge and Serial Monitor are not run together.",
     )
     p(
         doc,
@@ -557,18 +504,18 @@ def bridge_dashboard_section(doc: Document) -> None:
     )
     add_figure(
         doc,
-        SCREENSHOTS / "live_session_dashboard(18_full_demo_terminal).png",
-        "Fig. G2. Live dashboard showing the current recorded session state.",
-        4.2,
+        DASHBOARD_REPLAY_PATH,
+        "Fig. G5. Dashboard replay showing a completed pick session with voice authentication, green colour detection, movement events, and recorded-session history.",
+        6.4,
     )
     p(
         doc,
-        "The dashboard shows business-facing status rather than only developer logs. It reports whether the voice, colour, and movement stages are waiting or complete, displays the raw latest JSON, and lists recorded sessions. The Stop current session button was added to control the lifecycle from the web UI. When the stop action is triggered, the server completes an authenticated run. If voice or colour authentication was not completed, the incomplete data is deleted because it does not represent a successful demo session. Stop also sets bridge-control state so the bridge exits cleanly instead of continuing to post movement samples.",
+        "The dashboard shows business-facing status rather than only developer logs. It reports whether the voice, colour, and movement stages are waiting or complete, displays the raw latest JSON, and lists recorded sessions. The current operator-facing labels are '\"Start\" voice authentication detected', 'Green color detected.', and 'Detecting movement.' The End pick session button controls the lifecycle from the web UI. When the stop action is triggered, the server accepts either the logged-in operator's session cookie or ADMIN_API_TOKEN for external automation. If voice or colour authentication was not completed, the incomplete data is deleted because it does not represent a successful demo session. Stop also sets bridge-control state so the bridge exits cleanly instead of continuing to post movement samples.",
     )
     add_figure(
         doc,
-        SCREENSHOTS / "dashboard_movement_chart.png",
-        "Fig. G6. Recorded movement session visualised in the web dashboard.",
+        MOVEMENT_CHART_PATH,
+        "Fig. G6. Recorded movement confidence visualised in the web dashboard.",
         6.4,
     )
     p(
@@ -590,7 +537,7 @@ def docker_section(doc: Document) -> None:
     add_figure(
         doc,
         SCREENSHOTS / "docker_running.png",
-        "Fig. G9. Docker Compose stack running the web application and database services.",
+        "Fig. G7. Docker Compose stack running the web application and database services.",
         5.8,
     )
     p(
@@ -607,27 +554,33 @@ def security_section(doc: Document) -> None:
     )
     p(
         doc,
-        "The implemented mitigation is role-based bearer-token protection. POST /api/movement and GET /api/bridge/control require BRIDGE_API_TOKEN when configured. POST /api/sessions/current/complete requires either a valid operator session cookie or ADMIN_API_TOKEN. The dashboard uses the cookie issued by /api/auth/login, while external scripts can use the bearer token. Read-only dashboard endpoints remain public so a viewer can watch the demo without receiving write access. Bearer tokens are sent in the Authorization header, following the standard bearer-token pattern defined by RFC 6750 (IETF, 2012). On the server, token comparison uses Node.js crypto.timingSafeEqual to avoid simple timing leaks in equality checks (Node.js, n.d.).",
+        "The implemented mitigation separates bridge credentials from operator credentials. POST /api/movement and GET /api/bridge/control require BRIDGE_API_TOKEN when configured. POST /api/sessions/current/complete accepts either the logged-in operator's HMAC-signed session cookie or ADMIN_API_TOKEN for external scripts. When DASHBOARD_PASSWORD and SESSION_SECRET are configured, the dashboard and read APIs require the operator session cookie. Bearer tokens are sent in the Authorization header, following the standard bearer-token pattern defined by RFC 6750 (IETF, 2012). On the server, token and password comparison uses Node.js crypto.timingSafeEqual to avoid simple timing leaks in equality checks (Node.js, n.d.).",
+    )
+    add_figure(
+        doc,
+        UPDATED_SCREENSHOTS / "operator_sign_in.png",
+        "Fig. G8. Operator sign-in page used to issue the dashboard session cookie.",
+        3.4,
     )
     add_figure(
         doc,
         SCREENSHOTS / "security_unauthorized_401.png",
-        "Fig. G7. Unauthorized API request returning HTTP 401 when no bearer token is supplied.",
+        "Fig. G9. Unauthorized API request returning HTTP 401 when no bearer token is supplied.",
         5.3,
     )
     add_figure(
         doc,
         SCREENSHOTS / "security_authorized_success.png",
-        "Fig. G8. Authorized API request succeeding with a valid bearer token.",
+        "Fig. G10. Authorized API request succeeding with a valid bearer token.",
         6.3,
     )
     p(
         doc,
-        "Figures G7 and G8 show the difference between unauthorised and authorised requests. The goal is not enterprise identity management, but practical protection for a demo server. A random network user should not be able to fabricate board events, stop the bridge, or complete/delete sessions. Once the operator has logged in via /login, the signed session cookie authorises the Stop action without requiring token entry in the dashboard.",
+        "Figures G8, G9, and G10 show the two authentication surfaces. The goal is not enterprise identity management, but practical protection for a demo server. A random network user should not be able to fabricate board events, stop the bridge, view dashboard data when the password gate is enabled, or complete/delete sessions. The browser path uses the dashboard password and a signed session cookie, so no admin bearer token is stored in localStorage.",
     )
     p(
         doc,
-        "Residual risks remain. If the server is exposed directly over plain HTTP, tokens can be observed on the network; a real public deployment should use HTTPS behind a reverse proxy. Tokens are shared secrets rather than named user accounts, so anyone with the token has that role. Browser localStorage can be read by injected JavaScript, so the dashboard should not include untrusted scripts. Physical access to the board and bridge laptop is still trusted. These residual risks are acceptable for a university demonstration but should be addressed before a production deployment.",
+        "Residual risks remain. If the server is exposed directly over plain HTTP, bearer tokens and login traffic can be observed on the network; a real public deployment should use HTTPS behind a reverse proxy. Tokens and the dashboard password are shared secrets rather than named user accounts, so anyone with the relevant secret has that role. Physical access to the board and bridge laptop is still trusted. These residual risks are acceptable for a university demonstration but should be addressed before a production deployment.",
     )
 
 
@@ -635,11 +588,11 @@ def testing_section(doc: Document) -> None:
     heading(doc, "8. Testing and evaluation")
     p(
         doc,
-        "The manual test procedure starts the web application, starts the Python bridge, resets the board, and observes setup_status. The operator says start, shows green to the APDS9960 sensor, then moves the board. A successful run should record voice_start, colour_authenticated, and movement events in that order. The colour event should preserve the model label, confidence, device_id, and board timestamp. The screenshots in this report provide evidence for each phase: voice transition in Figure G3, colour authentication in Figure G4, movement classification in Figure G5, and session replay in Figure G6.",
+        "The manual test procedure starts the web application, signs in to the dashboard when DASHBOARD_PASSWORD is configured, starts the Python bridge with BRIDGE_API_TOKEN, resets the board, and observes setup_status. The operator says start, shows green to the APDS9960 sensor, then moves the board. A successful run should record voice_start, colour_authenticated, and movement events in that order. The screenshots in this report provide evidence for each phase: voice transition in Figure G2, colour authentication in Figure G3, movement classification in Figure G4, session replay in Figure G5, and movement confidence replay in Figure G6.",
     )
     p(
         doc,
-        "API tests were also used. Unauthorised mutation requests return 401 when tokens are configured, while authorised requests succeed. Docker testing checks that Compose starts both services and that migrations complete before the web server runs. A full simulated serial-flow test was also run through the real bridge, web container, and Postgres database: setup_status, voice_start, colour_authenticated, movement, and session_complete were stored in order. The main evaluation result is that the system behaves as a full pipeline: local TinyML inference controls state transitions, the bridge reliably forwards JSON, the web app stores and visualises sessions, and security controls prevent unauthorised writes on the deployed path.",
+        "API tests were also used. Unauthorised mutation requests return 401 when tokens are configured, while authorised requests succeed. Dashboard auth tests check that unauthenticated users are redirected to login, invalid passwords fail, and valid passwords issue the session cookie used by the operator UI. Docker testing checks that Compose starts both services and that migrations complete before the web server runs. The main evaluation result is that the system behaves as a full pipeline: local TinyML inference controls state transitions, the bridge reliably forwards JSON, the web app stores and visualises sessions, and security controls prevent unauthorised access on the deployed path.",
     )
 
 
@@ -647,7 +600,7 @@ def conclusion(doc: Document) -> None:
     heading(doc, "9. Conclusion")
     p(
         doc,
-        "The project demonstrates a complete TinyML IoT workflow rather than a disconnected model or a raw sensor dashboard. My voice recognition model provides the first interaction gate, and the group integration combines voice, colour, and movement models into a single firmware state machine. The Python bridge, Next.js dashboard, PostgreSQL storage, Docker deployment, and STRIDE security layer turn the board output into a deployable recorded-session system.",
+        "The project demonstrates a complete TinyML IoT workflow rather than a disconnected model or a raw sensor dashboard. My voice recognition model provides the first interaction gate, and the group integration combines voice, colour, and movement models into a single firmware state machine. The Python bridge, Next.js dashboard, PostgreSQL storage, Docker deployment, bearer-token bridge security, and signed dashboard sessions turn the board output into a deployable recorded-session system.",
     )
     p(
         doc,
@@ -683,23 +636,21 @@ def references(doc: Document) -> None:
 
 def appendix(doc: Document) -> None:
     heading(doc, "Appendix A. Evidence map")
-    evidence_items = [
-        ("Figures P1-P7", "Personal voice TinyML workflow, validation, on-device feasibility, and deployed runtime output."),
-        ("Figures G1-G6", "End-to-end architecture, firmware state transitions, bridge forwarding, dashboard session recording, and movement replay."),
-        ("Figures G7-G8", "STRIDE-inspired API protection, with unauthorised and authorised request outcomes."),
-        ("Figure G9", "Docker Compose deployment path for the web app and PostgreSQL database."),
-    ]
-    for label, value in evidence_items:
-        para = doc.add_paragraph()
-        para.paragraph_format.space_after = Pt(5)
-        label_run = para.add_run(f"{label}: ")
-        label_run.bold = True
-        label_run.font.color.rgb = DARK
-        para.add_run(value)
+    add_table(
+        doc,
+        ["Evidence", "What it proves"],
+        [
+            ("Figures P1-P7", "Personal voice TinyML workflow, validation, on-device feasibility, and deployed runtime output."),
+            ("Figures G1-G6", "End-to-end architecture, firmware state transitions, bridge forwarding, dashboard session recording, and movement replay."),
+            ("Figure G7", "Docker Compose deployment path for the web app and PostgreSQL database."),
+            ("Figures G8-G10", "Dashboard login and STRIDE-inspired API protection, with unauthorised and authorised request outcomes."),
+        ],
+    )
 
 
 def build_doc() -> None:
     generate_architecture_diagram()
+    prepare_report_screenshot_crops()
     doc = Document()
     style_document(doc)
     add_page_number(doc.sections[0])
@@ -709,7 +660,6 @@ def build_doc() -> None:
     personal_section(doc)
     doc.add_section(WD_SECTION.NEW_PAGE)
     architecture_section(doc)
-    doc.add_page_break()
     firmware_section(doc)
     bridge_dashboard_section(doc)
     docker_section(doc)

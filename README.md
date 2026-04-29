@@ -119,11 +119,11 @@ If auto-detection chooses the wrong port, pass it explicitly:
 1. Reset the board. Watch the dashboard live status update to
    *"Sensor node booted"* — confirms `setup_status` arrived.
 2. Wait for the 4-second arm delay, then say **"start"**.
-   The scanner status flips to *"Operator scan command armed"*.
+   The scanner status flips to *'"Start" voice authentication detected'*.
 3. Hold a green object in front of the APDS-9960 sensor.
-   Status flips to *"Package tag verified"*.
+   Status flips to *"Green color detected."*
 4. Move the board up, down, left, or right — the dashboard shows the
-   motion class and confidence in real time.
+   *"Detecting movement."* status plus the motion class and confidence in real time.
 5. Press **End pick session** on the dashboard. The bridge exits, the
    session is saved as completed, and you can replay it from the list.
 
@@ -171,8 +171,8 @@ and the bridge's input parsing.
 ./verify.sh http://localhost:3000
 ```
 
-The script reads `BRIDGE_API_TOKEN`, `ADMIN_API_TOKEN`, and `DASHBOARD_PASSWORD`
-from `.env`, then makes ~15 `curl` assertions against the live API:
+The script reads `BRIDGE_API_TOKEN`, `ADMIN_API_TOKEN`, `DASHBOARD_PASSWORD`,
+and `SESSION_SECRET` from `.env`, then makes ~15 `curl` assertions against the live API:
 unauthed dashboard hits redirect to `/login`, login with the wrong
 password returns 401, login with the correct password sets the
 `iot_session` cookie, ingest and bridge-control endpoints reject

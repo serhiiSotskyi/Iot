@@ -138,7 +138,7 @@ The firmware emits `voice_debug` at 2 Hz while waiting for the keyword and `colo
 
 ### Decision
 
-The bridge default for `--debug-downsample` is `0` (drop both event types entirely). The full set is functional events: `setup_status`, `voice_start`, `colour_authenticated`, `movement`, `init_error`. Set `BRIDGE_DEBUG_DOWNSAMPLE=1` to forward everything, or `=4` to keep one-in-four for live tuning.
+The bridge default for `--debug-downsample` is `0` (drop both event types entirely). The full set of normal functional events is `setup_status`, `voice_start`, `colour_authenticated`, and `movement`; `debug` output appears only when firmware debug logging is enabled. Set `BRIDGE_DEBUG_DOWNSAMPLE=1` to forward every debug sample, or `=4` to keep one-in-four for live tuning.
 
 ### Trade-off
 

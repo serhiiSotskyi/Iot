@@ -41,6 +41,16 @@ docker compose up -d --build
 docker compose ps
 
 PORT="${WEB_PORT:-3000}"
+HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+if [ -z "$HOST_IP" ] && command -v ipconfig >/dev/null 2>&1; then
+  HOST_IP="$(ipconfig getifaddr en0 2>/dev/null || true)"
+fi
+if [ -z "$HOST_IP" ] && command -v ipconfig >/dev/null 2>&1; then
+  HOST_IP="$(ipconfig getifaddr en1 2>/dev/null || true)"
+fi
+
 echo
-echo "Dashboard: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${PORT}/"
-echo "If hostname detection is blank, use http://SERVER_IP:${PORT}/"
+echo "Dashboard: http://localhost:${PORT}/"
+if [ -n "$HOST_IP" ]; then
+  echo "LAN URL:   http://${HOST_IP}:${PORT}/"
+fi

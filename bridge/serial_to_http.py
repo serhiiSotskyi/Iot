@@ -99,6 +99,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--serial-retry-interval",
+        type=float,
+        default=float(os.getenv("SERIAL_RETRY_INTERVAL", "2")),
+        help=(
+            "Seconds to wait before reopening the serial port after a USB "
+            "disconnect/reconnect error. Default: 2"
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print each forwarded JSON payload in addition to the HTTP status.",
@@ -238,11 +247,18 @@ def stop_requested(
     return False
 
 
-def main() -> int:
-    args = build_parser().parse_args()
-    if not args.port:
-        print("Missing serial port. Use --port or set SERIAL_PORT.", file=sys.stderr)
-        return 2
+def run_serial_forwarder(
+    args: argparse.Namespace,
+    session: requests.Session,
+    control_endpoint: str | None,
+    retry_queue: Deque[dict[str, Any]],
+    debug_counts: dict[str, int],
+) -> bool:
+    next_control_check = 0.0
+    queue_full_warned = False
+    next_retry_at = 0.0
+    retry_failures = 0
+    debug_downsample = max(args.debug_downsample, 0)
 
     print(
         f"[bridge] opening {args.port} @ {args.baud}, forwarding to {args.endpoint}",
@@ -254,107 +270,124 @@ def main() -> int:
             flush=True,
         )
 
+    with serial.Serial(args.port, args.baud, timeout=1) as ser:
+        # Discard any boot-time chatter sitting in the OS buffer so the
+        # first parsed line is from a known state.
+        ser.reset_input_buffer()
+        last_data_at = time.monotonic()
+
+        while True:
+            now = time.monotonic()
+
+            if control_endpoint and now >= next_control_check:
+                if stop_requested(session, control_endpoint, args.timeout):
+                    return False
+                next_control_check = now + max(args.control_interval, 0.1)
+
+            # Drain any queued events with exponential backoff up to 30s.
+            if retry_queue and now >= next_retry_at:
+                should_continue, drained_any = flush_retry_queue(
+                    session, args.endpoint, retry_queue, args.timeout, args.verbose
+                )
+                if not should_continue:
+                    return False
+                if retry_queue:
+                    retry_failures += 1
+                    next_retry_at = now + min(2 ** min(retry_failures, 5), 30)
+                else:
+                    if drained_any:
+                        print("[bridge] retry queue drained", flush=True)
+                    retry_failures = 0
+                    queue_full_warned = False
+
+            raw = ser.readline()
+            if not raw:
+                if now - last_data_at > args.silence_timeout:
+                    print(
+                        f"[bridge] no serial data for {args.silence_timeout:.0f}s — "
+                        "exiting so a supervisor can restart the bridge",
+                        file=sys.stderr,
+                    )
+                    return False
+                continue
+
+            last_data_at = now
+            line = raw.decode("utf-8", errors="ignore").strip()
+            payload = parse_json_line(line)
+            if payload is None:
+                continue
+
+            event_name = payload.get("event")
+            if event_name in DEBUG_EVENT_TYPES:
+                if debug_downsample == 0:
+                    continue
+                count = debug_counts.get(event_name, 0)
+                debug_counts[event_name] = count + 1
+                if debug_downsample > 1 and count % debug_downsample != 0:
+                    continue
+
+            # Try the queue first if there's a backlog so events stay ordered.
+            if retry_queue:
+                if len(retry_queue) == retry_queue.maxlen and not queue_full_warned:
+                    print(
+                        "[bridge] retry queue full, oldest events will be dropped",
+                        flush=True,
+                    )
+                    queue_full_warned = True
+                retry_queue.append(payload)
+                continue
+
+            should_continue, delivered = post_payload(
+                session,
+                args.endpoint,
+                payload,
+                args.timeout,
+                args.verbose,
+            )
+            if not delivered:
+                retry_queue.append(payload)
+                next_retry_at = now + 1
+            if not should_continue:
+                return False
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    if not args.port:
+        print("Missing serial port. Use --port or set SERIAL_PORT.", file=sys.stderr)
+        return 2
+
     session = requests.Session()
     if args.api_token:
         session.headers["Authorization"] = f"Bearer {args.api_token}"
     control_endpoint = args.control_endpoint or infer_control_endpoint(args.endpoint)
-    next_control_check = 0.0
     if control_endpoint:
         print(f"[bridge] polling control endpoint {control_endpoint}", flush=True)
 
-    retry_queue: Deque[tuple[str, dict[str, Any]]] = deque(maxlen=MAX_RETRY_QUEUE)
-    queue_full_warned = False
-    next_retry_at = 0.0
-    retry_failures = 0
+    retry_queue: Deque[dict[str, Any]] = deque(maxlen=MAX_RETRY_QUEUE)
     debug_counts: dict[str, int] = {}
-    debug_downsample = max(args.debug_downsample, 0)
 
     try:
-        with serial.Serial(args.port, args.baud, timeout=1) as ser:
-            # Discard any boot-time chatter sitting in the OS buffer so the
-            # first parsed line is from a known state.
-            ser.reset_input_buffer()
-            last_data_at = time.monotonic()
-
-            while True:
-                now = time.monotonic()
-
-                if control_endpoint and now >= next_control_check:
-                    if stop_requested(session, control_endpoint, args.timeout):
-                        return 0
-                    next_control_check = now + max(args.control_interval, 0.1)
-
-                # Drain any queued events with exponential backoff up to 30s.
-                if retry_queue and now >= next_retry_at:
-                    should_continue, drained_any = flush_retry_queue(
-                        session, retry_queue, args.timeout, args.verbose
-                    )
-                    if not should_continue:
-                        return 0
-                    if retry_queue:
-                        retry_failures += 1
-                        next_retry_at = now + min(2 ** min(retry_failures, 5), 30)
-                    else:
-                        if drained_any:
-                            print("[bridge] retry queue drained", flush=True)
-                        retry_failures = 0
-                        queue_full_warned = False
-
-                raw = ser.readline()
-                if not raw:
-                    if now - last_data_at > args.silence_timeout:
-                        print(
-                            f"[bridge] no serial data for {args.silence_timeout:.0f}s — "
-                            "exiting so a supervisor can restart the bridge",
-                            file=sys.stderr,
-                        )
-                        return 1
-                    continue
-
-                last_data_at = now
-                line = raw.decode("utf-8", errors="ignore").strip()
-                payload = parse_json_line(line)
-                if payload is None:
-                    continue
-
-                event_name = payload.get("event")
-                if event_name in DEBUG_EVENT_TYPES:
-                    if debug_downsample == 0:
-                        continue
-                    count = debug_counts.get(event_name, 0)
-                    debug_counts[event_name] = count + 1
-                    if debug_downsample > 1 and count % debug_downsample != 0:
-                        continue
-
-                # Try the queue first if there's a backlog so events stay ordered.
-                if retry_queue:
-                    if len(retry_queue) == retry_queue.maxlen and not queue_full_warned:
-                        print(
-                            "[bridge] retry queue full, oldest events will be dropped",
-                            flush=True,
-                        )
-                        queue_full_warned = True
-                    retry_queue.append(
-                        (select_endpoint(payload, args.endpoint, args.auth_endpoint), payload)
-                    )
-                    continue
-
-                target = select_endpoint(payload, args.endpoint, args.auth_endpoint)
-                should_continue, delivered = post_payload(
+        while True:
+            try:
+                should_continue = run_serial_forwarder(
+                    args,
                     session,
-                    target,
-                    payload,
-                    args.timeout,
-                    args.verbose,
+                    control_endpoint,
+                    retry_queue,
+                    debug_counts,
                 )
-                if not delivered:
-                    retry_queue.append((target, payload))
-                    next_retry_at = now + 1
-                if not should_continue:
-                    return 0
-    except serial.SerialException as exc:
-        print(f"[bridge] serial error: {exc}", file=sys.stderr)
-        return 1
+            except serial.SerialException as exc:
+                print(
+                    f"[bridge] serial error: {exc}; retrying in "
+                    f"{args.serial_retry_interval:.1f}s",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(max(args.serial_retry_interval, 0.1))
+                continue
+
+            return 0 if not should_continue else 0
     except KeyboardInterrupt:
         print("\n[bridge] stopped", flush=True)
         return 0

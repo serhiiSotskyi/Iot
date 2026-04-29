@@ -20,7 +20,7 @@
           <mxGeometry x="280" y="160" width="270" height="140" as="geometry" />
         </mxCell>
 
-        <mxCell id="fault" value="FAULT&#10;&#10;On any sensor init failure:&#10;emit init_error (unconditionally),&#10;halt the pipeline.&#10;&#10;init_error fires regardless of&#10;DEBUG_SERIAL — operators see&#10;the fault even with debug off." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#B85450;fontSize=11;align=left;spacingLeft=10;strokeWidth=2;" vertex="1" parent="1">
+        <mxCell id="fault" value="FAULT&#10;&#10;On any sensor init failure:&#10;emit debug fault log when&#10;DEBUG_SERIAL is enabled,&#10;then halt the pipeline.&#10;&#10;Bridge serial retry and silence&#10;timeout surface disconnects during&#10;manual testing." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#B85450;fontSize=11;align=left;spacingLeft=10;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="600" y="160" width="220" height="140" as="geometry" />
         </mxCell>
 

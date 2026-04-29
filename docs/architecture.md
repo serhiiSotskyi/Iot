@@ -41,6 +41,7 @@ This document describes the architecture of the Warehouse Sensor Node, maps it t
             |    exponential backoff           |
             |  - polls dashboard for stop      |
             |  - silence-timeout exits non-0   |
+            |  - retries serial reconnects     |
             '----------------+-----------------'
                              |  HTTP/JSON over LAN
                              |  POST /api/movement
@@ -53,7 +54,9 @@ This document describes the architecture of the Warehouse Sensor Node, maps it t
             |  - /api/movement   ingest        |
             |  - /api/latest     live read     |
             |  - /api/sessions   history       |
+            |  - /api/auth/login operator auth |
             |  - /api/bridge/control           |
+            |  - /api/sessions/current/complete|
             |                                  |
             |  Postgres tables:                |
             |    sessions, events,             |
@@ -72,6 +75,8 @@ This document describes the architecture of the Warehouse Sensor Node, maps it t
             '----------------------------------'
 ```
 
+The maintained visual diagram is `docs/diagrams/system-architecture.png`; it is the source used by the report.
+
 ## Mapping to the IoT World Forum reference model (7 layers)
 
 The IoT World Forum reference model (Cisco, 2014) is the closest fit for this system because it gives explicit layers for *edge computing* and for the *operator/process* level — both of which are central here.
@@ -81,9 +86,9 @@ The IoT World Forum reference model (Cisco, 2014) is the closest fit for this sy
 | 1 | **Physical Devices and Controllers** | The "thing" itself — sensors and actuators that perceive the physical world. | Arduino Nano 33 BLE Sense, with the on-board PDM microphone, APDS-9960 RGB-and-gesture sensor, and LSM9DS1 9-axis IMU. |
 | 2 | **Connectivity** | How devices talk to the next tier; transport, addressing, framing. | USB CDC serial at 115 200 baud, newline-delimited JSON. *Deliberately not Wi-Fi* — see `docs/design-decisions.md`. |
 | 3 | **Edge (Fog) Computing** | Computation that happens close to the sensor to reduce upstream traffic. This is the layer modern IoT curricula emphasise most. | All three TinyML inferences run **on the MCU**, not in the cloud: voice keyword spotting, colour classification, and motion classification, served from one combined Edge Impulse library (`arduino/libraries/combined_inferencing/`). Only classification *results* leave the device, not raw audio or accelerometer samples. |
-| 4 | **Data Accumulation** | Converting events-in-motion to data-at-rest; buffering and storage. | Python bridge holds an in-memory retry queue (bounded, ordered) for transient web-app outages. Postgres tables `events`, `sessions`, `movement_samples`, and `recording_state` provide durable storage. |
+| 4 | **Data Accumulation** | Converting events-in-motion to data-at-rest; buffering and storage. | Python bridge holds an in-memory retry queue (bounded, ordered) for transient web-app outages and retries serial reconnects when the USB device is temporarily reconfigured. Postgres tables `events`, `sessions`, `movement_samples`, and `recording_state` provide durable storage. |
 | 5 | **Data Abstraction** | Reconciling heterogeneous data into a queryable form. | `web/lib/eventStore.js` is the single abstraction over both the Postgres path and the development-only in-memory fallback. The dashboard never talks to either store directly; it sees a normalised JSON shape via the API routes. |
-| 6 | **Application** | Domain-specific logic and user interfaces. | The Next.js dashboard (`web/app/page.js`): live scanner status, package-handling motion view, pick-session list and replay, end-of-pick control. |
+| 6 | **Application** | Domain-specific logic and user interfaces. | The Next.js dashboard (`web/app/page.js`): operator login, live scanner status, package-handling motion view, pick-session list and replay, end-of-pick control. |
 | 7 | **Collaboration and Processes** | The human/business workflow the system supports. | The warehouse pick workflow itself: an operator voice-arms the scanner, presents a verified package tag, and the system records the handling motion and direction until the pick session is ended from the dashboard. |
 
 ## Why this topology
@@ -106,6 +111,7 @@ Three architectural decisions are the most consequential:
 | Ingest API | `web/app/api/movement/route.js` (validation, optional bearer auth, optional rate limit, physical-bounds check) |
 | Read API | `web/app/api/latest/route.js`, `web/app/api/sessions/route.js`, `web/app/api/sessions/[id]/route.js` |
 | Control plane | `web/app/api/bridge/control/route.js`, `web/app/api/sessions/current/complete/route.js` |
+| Operator auth | `web/app/api/auth/login/route.js`, `web/app/api/auth/logout/route.js`, `web/lib/auth.js`, `web/middleware.js` |
 | Persistence | `web/lib/eventStore.js`, `web/db/schema.sql` |
 | UI | `web/app/page.js`, `web/app/layout.js`, `web/app/globals.css` |
 | Deployment | `docker-compose.yml`, `web/Dockerfile`, `_update_server`, `.env.example` |
@@ -116,7 +122,7 @@ Three architectural decisions are the most consequential:
 flowchart LR
     subgraph EDGE["Edge"]
         BOARD["Nano 33 BLE Sense<br/>3 x Edge Impulse impulses"]
-        BRIDGE["Python bridge<br/>retry queue, debug filter,<br/>silence timeout"]
+        BRIDGE["Python bridge<br/>retry queue, debug filter,<br/>silence timeout, serial reconnect"]
     end
     subgraph SERVER["Application server"]
         API["Next.js API routes<br/>auth, validation, rate limit"]
@@ -129,7 +135,7 @@ flowchart LR
     BOARD -- "USB serial JSON" --> BRIDGE
     BRIDGE -- "HTTP POST<br/>(opt. Bearer)" --> API
     API <--> PG
-    UI -- "polling" --> API
-    UI -- "POST end-pick" --> API
+    UI -- "polling<br/>(session cookie when configured)" --> API
+    UI -- "POST login / logout / end-pick" --> API
     BRIDGE -- "GET control" --> API
 ```

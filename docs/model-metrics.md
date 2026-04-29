@@ -178,7 +178,7 @@ Classifies a 2-second IMU window into a motion direction class. Used after a pac
 
 - IMU read at ~44 Hz into a circular buffer of size `88` (= 2 s of history).
 - On every full window, units are converted from `g` to `m/s²` before being passed to `run_classifier`.
-- The output is reported on the dashboard as the "Package handling motion" class plus its confidence.
+- The output is reported on the dashboard under the "Detecting movement." stage, with the movement class and confidence shown in the handling telemetry.
 
 ---
 

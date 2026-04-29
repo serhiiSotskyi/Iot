@@ -3,8 +3,8 @@
 # verify.sh — deployment verification suite.
 #
 # Asserts every documented auth boundary against a running stack. Reads
-# DASHBOARD_PASSWORD, BRIDGE_API_TOKEN, ADMIN_API_TOKEN from .env (or the
-# ambient environment) so no secrets are baked into this script.
+# DASHBOARD_PASSWORD, SESSION_SECRET, BRIDGE_API_TOKEN, ADMIN_API_TOKEN from
+# .env (or the ambient environment) so no secrets are baked into this script.
 #
 # Usage:
 #   ./verify.sh                          # defaults to http://localhost:3000
@@ -25,8 +25,14 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 : "${DASHBOARD_PASSWORD:?DASHBOARD_PASSWORD must be set in environment or .env}"
+: "${SESSION_SECRET:?SESSION_SECRET must be set in environment or .env}"
 : "${BRIDGE_API_TOKEN:?BRIDGE_API_TOKEN must be set in environment or .env}"
 : "${ADMIN_API_TOKEN:?ADMIN_API_TOKEN must be set in environment or .env}"
+
+if [ "${#SESSION_SECRET}" -lt 16 ]; then
+  echo "SESSION_SECRET must be at least 16 characters for dashboard login auth." >&2
+  exit 2
+fi
 
 PASS=0
 FAIL=0

@@ -59,7 +59,7 @@ CVSS v3.1 official bands ([FIRST.org](https://www.first.org/cvss/v3.1/specificat
 
 - **In scope:** the firmware, the bridge, the web application, the dashboard, the database, and the data flows between them.
 - **Out of scope:** physical attacks on the board (replacement, re-flash via bootloader), supply-chain attacks on the Edge Impulse model files, browser-side attacks against the operator's machine itself.
-- **Trust assumptions:** the warehouse LAN is partially trusted (other devices share the network but cannot reach the public internet); the bridge host is trusted; the operator's browser is trusted-but-unauthenticated for this submission.
+- **Trust assumptions:** the warehouse LAN is partially trusted (other devices share the network but cannot reach the public internet); the bridge host is trusted; the operator's browser is trusted after sign-in when `DASHBOARD_PASSWORD` and `SESSION_SECRET` are configured.
 
 ---
 
@@ -112,12 +112,12 @@ CVSS v3.1 official bands ([FIRST.org](https://www.first.org/cvss/v3.1/specificat
 
 | ID | Type | Element | Notes |
 |---|---|---|---|
-| E1 | External entity | **Operator** | Trusted physically; not authenticated to the dashboard in this submission. |
+| E1 | External entity | **Operator** | Trusted physically; authenticated to the dashboard with the shared operator password when configured. |
 | E2 | External entity | **Attacker on LAN** | Untrusted. Has IP reachability to the web app and (if Postgres is host-port-exposed) to the database. |
 | P1 | Process | **Firmware** on the Nano 33 BLE Sense | Runs three on-device Edge Impulse models. |
 | P2 | Process | **Python bridge** on the gateway host | Forwards JSON, applies retry/backoff, polls control endpoint. |
 | P3 | Process | **Next.js web app** in Docker | Serves API routes and the dashboard. Now runs as the unprivileged `node` user. |
-| P4 | Process | **Browser dashboard** (React client) | Polls `/api/latest` and `/api/sessions`. |
+| P4 | Process | **Browser dashboard** (React client) | Logs in via `/api/auth/login`, then polls `/api/latest` and `/api/sessions` with the signed session cookie. |
 | DS1 | Data store | **Postgres** | `sessions`, `events`, `movement_samples`, `recording_state`. |
 | DS2 | Data store | **In-memory event store** | Development-only, gated by `assertMemoryFallbackAllowed()`. |
 | F1 | Data flow | **USB CDC serial** (P1 → P2) | 115 200 baud, newline-delimited JSON. |
@@ -128,7 +128,7 @@ CVSS v3.1 official bands ([FIRST.org](https://www.first.org/cvss/v3.1/specificat
 | F6 | Data flow | **SQL queries** (P3 ↔ DS1) | Parameterised statements; no string concatenation. |
 | TB1 | Trust boundary | **USB cable** | Physical access required to cross. |
 | TB2 | Trust boundary | **LAN** | Network access required to cross. |
-| TB3 | Trust boundary | **Browser/HTTP** | The dashboard is unauthenticated in this submission. |
+| TB3 | Trust boundary | **Browser/HTTP** | Dashboard access is gated by the signed `iot_session` cookie when dashboard auth is configured. |
 
 ---
 
@@ -155,7 +155,7 @@ The following table walks each element against only the STRIDE categories that t
 
 ### Per-element commentary on the cells the methodology required us to consider
 
-- **E1 Operator** — only S and R apply to external entities. A spoofing risk exists because the dashboard has no authentication (T03). A repudiation risk exists because no audit trail records *which* operator pressed Stop or which session belonged to which person (T04).
+- **E1 Operator** — only S and R apply to external entities. A spoofing risk existed while the dashboard was unauthenticated (T03); it is mitigated by the shared-password login gate when configured. A repudiation risk remains because no audit trail records *which* operator pressed Stop or which session belonged to which person (T04).
 - **P1 Firmware** — all six STRIDE categories were considered. The firmware has no remote attack surface (no Wi-Fi, no Bluetooth host listening), so spoofing/tampering/EoP collapse to physical or supply-chain attacks (out of scope §2). Information disclosure was reviewed: the firmware emits *classification results*, not raw audio or accelerometer samples — this is a deliberate edge-computing privacy property and is recorded in `docs/architecture.md` § "Why this topology".
 - **DS1 Postgres** — T, R, I, D apply. Tampering via SQL injection is mitigated by the parameterised-query discipline in `web/lib/eventStore.js`. Information disclosure is the high-impact threat (T06: default credential).
 - **F2 HTTP POST** — T, I, D apply. Tampering and information disclosure both reduce to the same root cause (plaintext HTTP, T05). Denial of service is T07.
@@ -225,10 +225,10 @@ Each threat has a stable ID, a DFD anchor, a CVSS v3.1 base vector, an estimated
 ### T08 — Silent serial death (DoS)
 
 - **DFD anchor:** F1 / P2 (Denial of Service)
-- **Description:** A yanked USB cable or crashed sketch causes the bridge's `readline()` to return empty bytes indefinitely. Without detection, the dashboard sits on stale data and the fault is invisible.
+- **Description:** A yanked USB cable, crashed sketch, or temporary USB serial reconfiguration causes the bridge's `readline()` to return empty bytes or raise a serial error. Without detection, the dashboard sits on stale data and the fault is invisible.
 - **CVSS v3.1:** `AV:P/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H` → **4.6 (Medium)** (physical attack vector lowers the score)
-- **Mitigation:** `--silence-timeout` (default 60 s) — bridge exits non-zero so a process supervisor can restart it. Firmware now emits `init_error` events unconditionally, so genuine sensor faults reach the dashboard.
-- **Residual:** Without a process supervisor (`systemd`/`launchd`), an exit just means the bridge is gone.
+- **Mitigation:** `--silence-timeout` (default 60 s) exits non-zero when the board goes silent, and `--serial-retry-interval` keeps retrying when the OS reports a temporary serial disconnect or device reconfiguration. Firmware debug flags currently emit setup and classifier-debug evidence during manual testing; sensor initialisation failures are still visible when debug output is enabled.
+- **Residual:** Without a process supervisor (`systemd`/`launchd`), a silence-timeout exit still leaves the bridge stopped until the operator restarts it.
 
 ### T09 — MitM control-plane injection
 
@@ -282,7 +282,7 @@ Each threat has a stable ID, a DFD anchor, a CVSS v3.1 base vector, an estimated
 | T02 Payload tampering | F2 | T | 6.5 | Medium | Mitigated (validation + physical bounds) |
 | T12 Dashboard login brute-force | E1 / P3 | S | 6.5 | Medium | Mitigated (rate-limit + signed cookie); contingent on strong password |
 | T11 Overprivileged DB role | DS1 | E | 6.0 | Medium | Partial (parameterised queries); role split pending |
-| T08 Silent serial death | F1 / P2 | D | 4.6 | Medium | Mitigated (silence-timeout + `init_error`) |
+| T08 Silent serial death | F1 / P2 | D | 4.6 | Medium | Mitigated (silence-timeout + serial reconnect retry) |
 | T04 Repudiation | E1 / P3 / DS1 | R | n/a | (qualitative: Low for demo, High at scale) | Accepted for demo scope |
 
 The five **High** or **Critical** findings (T06, T10, T07, T03, T05, T09) are the load-bearing items for any production move. T06, T10, and T03 are already closed by the implementation. T05 and T09 share the remaining fix (TLS at a reverse proxy) and would close together.
@@ -301,9 +301,9 @@ The five **High** or **Critical** findings (T06, T10, T07, T03, T05, T09) are th
 | Operator login + signed session cookie | `web/lib/auth.js`, `web/middleware.js`, `web/app/api/auth/login/route.js`, `web/app/login/page.js` | T03 |
 | Postgres bound to host loopback (127.0.0.1) | `docker-compose.yml` | T06 |
 | Bridge silence timeout | `bridge/serial_to_http.py` | T08 |
+| Bridge serial reconnect retry | `bridge/serial_to_http.py` | T08 |
 | Bridge retry queue with backoff | `bridge/serial_to_http.py` | T07 (resilience) |
 | Drop/downsample debug events | `bridge/serial_to_http.py` | T07 |
-| Init-error emission regardless of debug flag | `arduino/voice_colour_motion_demo/voice_colour_motion_demo.ino` | T08 |
 | Non-root container | `web/Dockerfile` | T10 |
 | Healthcheck on web service | `docker-compose.yml` | operability |
 | In-memory fallback gated to non-production | `web/lib/eventStore.js` | T11 (data-loss footgun) |
@@ -316,7 +316,7 @@ The five **High** or **Critical** findings (T06, T10, T07, T03, T05, T09) are th
 
 - **Physical attacks on the board** — replacement, re-flash via the bootloader, USB-cable injection, EM eavesdropping. Tamper-evident enclosures and bootloader-locking are the right answers; both are out of academic scope.
 - **Supply-chain attacks on Edge Impulse models.** The `combined_inferencing` library is treated as trusted.
-- **Operator-machine attacks.** No CSP, no CSRF tokens — acceptable given the dashboard is itself unauthenticated and behind a trusted reverse proxy in any real deployment.
+- **Operator-machine attacks.** No CSP or CSRF-specific defence beyond same-site cookies — acceptable for the controlled demo, but a production deployment should harden the browser surface.
 - **Long-term retention and right-to-erasure.** The schema records voice/colour/motion samples indefinitely. Real warehouse use needs a retention policy.
 
 ---

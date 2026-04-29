@@ -7,9 +7,9 @@ const SESSION_POLL_INTERVAL_MS = 2000;
 
 const EVENT_LABELS = {
   setup_status: "Sensor node booted",
-  voice_start: "Operator scan command armed",
-  colour_authenticated: "Package tag verified",
-  movement: "Package handling motion",
+  voice_start: "\"Start\" voice authentication detected",
+  colour_authenticated: "Green color detected.",
+  movement: "Detecting movement.",
   init_error: "Sensor fault",
   session_complete: "Pick session closed",
   voice_debug: "Voice scanner telemetry",
