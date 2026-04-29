@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireBearerToken } from "../../../lib/bearerAuth";
 import { recordEvent } from "../../../lib/eventStore";
 import { allowRequest } from "../../../lib/rateLimit";
 
@@ -16,22 +17,15 @@ const KNOWN_EVENTS = new Set([
   "session_complete"
 ]);
 
-const INGEST_TOKEN = process.env.INGEST_TOKEN || null;
 const RATE_LIMIT_PER_MIN = Number(process.env.INGEST_RATE_LIMIT_PER_MIN ?? 0);
 
 export async function POST(request) {
-  try {
-    if (INGEST_TOKEN) {
-      const header = request.headers.get("authorization") || "";
-      const provided = header.startsWith("Bearer ") ? header.slice(7) : null;
-      if (provided !== INGEST_TOKEN) {
-        return NextResponse.json(
-          { ok: false, error: "Unauthorized." },
-          { status: 401 }
-        );
-      }
-    }
+  const unauthorized = requireBearerToken(request, "BRIDGE_API_TOKEN", "INGEST_TOKEN");
+  if (unauthorized) {
+    return unauthorized;
+  }
 
+  try {
     if (!allowRequest(request, RATE_LIMIT_PER_MIN, "ingest")) {
       return NextResponse.json(
         { ok: false, error: "Rate limit exceeded." },
@@ -124,4 +118,3 @@ function isValidMovement(payload) {
   }
   return true;
 }
-

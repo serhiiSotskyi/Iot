@@ -64,6 +64,8 @@ Expected normal demo flow:
   Idempotent Postgres schema for `sessions`, `events`, and `movement_samples`.
 - `docker-compose.yml`
   Local/server deployment stack for the Next.js web app plus Postgres.
+- `docs/SECURITY_STRIDE.md`
+  STRIDE threat model, trust boundaries, implemented controls, and residual risks.
 - `_update_server`
   Server update script: pulls latest code, rebuilds containers, and restarts the stack.
 - `web/app/page.js`
@@ -78,6 +80,9 @@ Expected normal demo flow:
 - Restarting the web app clears data only when using the in-memory fallback.
 - The dashboard Stop button completes only authenticated sessions. If `voice_start` or `colour_authenticated` is missing, the session and its events are deleted.
 - Stop also requests bridge shutdown. The bridge polls `/api/bridge/control` and exits when the server returns `stopBridge: true`.
+- Deployed instances should set `BRIDGE_API_TOKEN` and `ADMIN_API_TOKEN`.
+- `BRIDGE_API_TOKEN` protects event ingest and bridge control; `ADMIN_API_TOKEN` protects the dashboard Stop action.
+- Local development stays open if those token env vars are not set.
 - Restarting the Python bridge does not reset the Arduino.
 - The Arduino state machine is one-way. Once it leaves `WAITING_FOR_VOICE`, it stays advanced until the board is reset or re-flashed.
 - Only one process should own the serial port at a time.
@@ -170,10 +175,15 @@ ls /dev/cu.*
 Start the bridge:
 
 ```bash
-python bridge/serial_to_http.py --port /dev/cu.usbmodemXXXX --endpoint http://127.0.0.1:3000/api/movement --verbose
+python bridge/serial_to_http.py \
+  --port /dev/cu.usbmodemXXXX \
+  --endpoint http://127.0.0.1:3000/api/movement \
+  --api-token "$BRIDGE_API_TOKEN" \
+  --verbose
 ```
 
 Use the real port name shown by `ls /dev/cu.*`.
+For local development without `BRIDGE_API_TOKEN` configured in the web app, `--api-token` can be omitted.
 
 ### Docker / server deployment
 
@@ -185,6 +195,8 @@ First-time server setup:
 git clone <repo-url> iot-demo
 cd iot-demo
 cp .env.example .env
+openssl rand -hex 32
+# Paste one generated value into BRIDGE_API_TOKEN and another into ADMIN_API_TOKEN.
 chmod +x ./_update_server
 ./_update_server
 ```
@@ -208,6 +220,7 @@ Bridge pointing to the server:
 python bridge/serial_to_http.py \
   --port /dev/cu.usbmodemXXXX \
   --endpoint http://SERVER_IP:3000/api/movement \
+  --api-token "$BRIDGE_API_TOKEN" \
   --verbose
 ```
 
@@ -317,6 +330,11 @@ Likely causes:
 - sketch not uploaded
 - serial port owned by Arduino Serial Monitor
 - board is not printing JSON
+- deployed web API returned `401` because the bridge is missing `--api-token "$BRIDGE_API_TOKEN"`
+
+### If the dashboard Stop button says Unauthorized
+
+The deployed server has `ADMIN_API_TOKEN` set. Click Stop again and enter the correct admin token. The browser stores it in `localStorage` as `iot_demo_admin_token`.
 
 ### If the port disappears
 
@@ -385,6 +403,7 @@ Test the web app without the board:
 ```bash
 curl -X POST http://127.0.0.1:3000/api/movement \
   -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $BRIDGE_API_TOKEN" \
   -d '{"event":"movement","ax":0.01,"ay":-0.02,"az":0.98,"gx":1.2,"gy":0.4,"gz":-0.1,"direction":"down"}'
 ```
 
@@ -406,10 +425,24 @@ Complete the active session manually:
 curl -X POST http://127.0.0.1:3000/api/sessions/current/complete
 ```
 
+For deployed/token-protected environments:
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/sessions/current/complete \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN"
+```
+
 Check whether the bridge has been asked to stop:
 
 ```bash
 curl http://127.0.0.1:3000/api/bridge/control
+```
+
+For deployed/token-protected environments:
+
+```bash
+curl http://127.0.0.1:3000/api/bridge/control \
+  -H "Authorization: Bearer $BRIDGE_API_TOKEN"
 ```
 
 ## For Future Agents

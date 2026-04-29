@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-iot_demo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-iot_demo_password}
     ports:
-      - "${POSTGRES_HOST_PORT:-5434}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5434}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -34,6 +34,8 @@ services:
       INGEST_RATE_LIMIT_PER_MIN: ${INGEST_RATE_LIMIT_PER_MIN:-0}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
       SESSION_SECRET: ${SESSION_SECRET:-}
+      BRIDGE_API_TOKEN: ${BRIDGE_API_TOKEN:?BRIDGE_API_TOKEN is required}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:?ADMIN_API_TOKEN is required}
     ports:
       - "${WEB_PORT:-3000}:3000"
     healthcheck:

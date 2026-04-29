@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 const LATEST_POLL_INTERVAL_MS = 500;
 const SESSION_POLL_INTERVAL_MS = 2000;
+const ADMIN_TOKEN_STORAGE_KEY = "iot_demo_admin_token";
 
 const EVENT_LABELS = {
   setup_status: "Sensor node booted",
@@ -260,11 +261,37 @@ export default function HomePage() {
     setSessionMessage("");
 
     try {
-      const response = await fetch("/api/sessions/current/complete", {
-        method: "POST",
-        cache: "no-store"
-      });
-      const result = await response.json();
+      let adminToken = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) ?? "";
+      let response = await postCompleteCurrentSession(adminToken);
+      let result = await response.json();
+
+      if (response.status === 401 && adminToken) {
+        window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+        throw new Error("Unauthorized. Admin token was cleared; try Stop again with the correct token.");
+      }
+
+      if (response.status === 401) {
+        const enteredToken = window.prompt(
+          "Enter the admin token for this demo server."
+        );
+        if (enteredToken === null) {
+          setSessionMessage("End connection cancelled.");
+          return;
+        }
+
+        adminToken = enteredToken.trim();
+        if (adminToken) {
+          window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, adminToken);
+        }
+
+        response = await postCompleteCurrentSession(adminToken);
+        result = await response.json();
+      }
+
+      if (response.status === 401) {
+        window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+        throw new Error("Unauthorized. Admin token was cleared; try Stop again with the correct token.");
+      }
 
       if (!response.ok || !result.ok) {
         throw new Error(result.error ?? `POST failed with ${response.status}`);
@@ -287,6 +314,15 @@ export default function HomePage() {
     } finally {
       setStopPending(false);
     }
+  }
+
+  function postCompleteCurrentSession(adminToken) {
+    const headers = adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined;
+    return fetch("/api/sessions/current/complete", {
+      method: "POST",
+      cache: "no-store",
+      headers
+    });
   }
 
   return (

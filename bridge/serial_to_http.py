@@ -55,6 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds between control endpoint checks. Default: 1",
     )
     parser.add_argument(
+        "--api-token",
+        default=os.getenv("BRIDGE_API_TOKEN"),
+        help="Bearer token for the web API. Defaults to BRIDGE_API_TOKEN.",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=float(os.getenv("HTTP_TIMEOUT", "5")),
@@ -235,8 +240,9 @@ def main() -> int:
     )
 
     session = requests.Session()
-    if args.ingest_token:
-        session.headers["Authorization"] = f"Bearer {args.ingest_token}"
+    api_token = args.api_token or args.ingest_token
+    if api_token:
+        session.headers["Authorization"] = f"Bearer {api_token}"
     control_endpoint = args.control_endpoint or infer_control_endpoint(args.endpoint)
     next_control_check = 0.0
     if control_endpoint:

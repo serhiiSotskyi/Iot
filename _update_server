@@ -13,16 +13,32 @@ fi
 
 if [ ! -f .env ] && [ -f .env.example ]; then
   cp .env.example .env
-  echo "Created .env from .env.example. Edit it if you need different credentials."
+  echo "Created .env from .env.example. Edit BRIDGE_API_TOKEN and ADMIN_API_TOKEN before deploying."
+fi
+
+set -a
+[ -f .env ] && . ./.env
+set +a
+
+missing_env=0
+if [ -z "${BRIDGE_API_TOKEN:-}" ]; then
+  echo "BRIDGE_API_TOKEN is required in .env." >&2
+  missing_env=1
+fi
+
+if [ -z "${ADMIN_API_TOKEN:-}" ]; then
+  echo "ADMIN_API_TOKEN is required in .env." >&2
+  missing_env=1
+fi
+
+if [ "$missing_env" -ne 0 ]; then
+  echo "Generate tokens with: openssl rand -hex 32" >&2
+  exit 1
 fi
 
 git pull --ff-only
 docker compose up -d --build
 docker compose ps
-
-set -a
-[ -f .env ] && . ./.env
-set +a
 
 PORT="${WEB_PORT:-3000}"
 echo
