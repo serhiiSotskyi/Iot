@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { recordEvent } from "../../../lib/eventStore";
+import { allowRequest } from "../../../lib/rateLimit";
 
 const MAX_BODY_BYTES = 8 * 1024;
 const KNOWN_EVENTS = new Set([
@@ -17,10 +18,6 @@ const KNOWN_EVENTS = new Set([
 
 const INGEST_TOKEN = process.env.INGEST_TOKEN || null;
 const RATE_LIMIT_PER_MIN = Number(process.env.INGEST_RATE_LIMIT_PER_MIN ?? 0);
-const rateBuckets = globalThis.__iotDemoRateBuckets ?? new Map();
-if (!globalThis.__iotDemoRateBuckets) {
-  globalThis.__iotDemoRateBuckets = rateBuckets;
-}
 
 export async function POST(request) {
   try {
@@ -35,7 +32,7 @@ export async function POST(request) {
       }
     }
 
-    if (RATE_LIMIT_PER_MIN > 0 && !allowRequest(request)) {
+    if (!allowRequest(request, RATE_LIMIT_PER_MIN, "ingest")) {
       return NextResponse.json(
         { ok: false, error: "Rate limit exceeded." },
         { status: 429 }
@@ -128,18 +125,3 @@ function isValidMovement(payload) {
   return true;
 }
 
-function allowRequest(request) {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown";
-  const now = Date.now();
-  const windowMs = 60_000;
-  const bucket = rateBuckets.get(ip);
-  if (!bucket || now - bucket.start > windowMs) {
-    rateBuckets.set(ip, { start: now, count: 1 });
-    return true;
-  }
-  bucket.count += 1;
-  return bucket.count <= RATE_LIMIT_PER_MIN;
-}
