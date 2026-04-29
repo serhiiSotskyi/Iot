@@ -5,6 +5,38 @@ import { useEffect, useState } from "react";
 const LATEST_POLL_INTERVAL_MS = 500;
 const SESSION_POLL_INTERVAL_MS = 2000;
 
+const EVENT_LABELS = {
+  setup_status: "Sensor node booted",
+  voice_start: "Operator scan command armed",
+  colour_authenticated: "Package tag verified",
+  movement: "Package handling motion",
+  init_error: "Sensor fault",
+  session_complete: "Pick session closed",
+  voice_debug: "Voice scanner telemetry",
+  colour_debug: "Tag scanner telemetry",
+  debug: "Diagnostic"
+};
+
+function labelForEvent(eventName) {
+  if (!eventName) return "Awaiting scanner";
+  return EVENT_LABELS[eventName] ?? eventName;
+}
+
+function dotForEvent(eventName) {
+  if (!eventName) return "dot";
+  if (eventName === "init_error") return "dot dot-err";
+  if (
+    eventName === "voice_start" ||
+    eventName === "colour_authenticated" ||
+    eventName === "movement" ||
+    eventName === "setup_status"
+  ) {
+    return "dot dot-ok";
+  }
+  if (eventName === "session_complete") return "dot dot-info";
+  return "dot dot-warn";
+}
+
 const emptyLatestState = {
   ok: true,
   latest: null
@@ -259,52 +291,69 @@ export default function HomePage() {
 
   return (
     <main className="dashboard-shell">
-      <section className="hero-card">
-        <p className="eyebrow">Nano 33 BLE Demo</p>
-        <h1>Live event monitor</h1>
-        <p className="hero-copy">
-          Polling <code>/api/latest</code> every {LATEST_POLL_INTERVAL_MS} ms and storing every
-          bridge event into recorded Postgres-backed demo sessions.
-        </p>
+      <section className="status-bar" aria-label="Live system status">
+        <div className="status-bar-item">
+          <span className={dotForEvent(latest?.event)} />
+          <strong>{labelForEvent(latest?.event)}</strong>
+        </div>
+        <span className="status-bar-divider" aria-hidden="true" />
+        <div className="status-bar-item">
+          <span>Last event</span>
+          <strong className="tnum">{latest?.receivedAt ? formatTime(latest.receivedAt) : "—"}</strong>
+        </div>
+        <span className="status-bar-divider" aria-hidden="true" />
+        <div className="status-bar-item">
+          <span>Active pick</span>
+          <strong className="tnum">{latest?.sessionId ? shortId(latest.sessionId) : "—"}</strong>
+        </div>
+        {error ? (
+          <>
+            <span className="status-bar-divider" aria-hidden="true" />
+            <div className="status-bar-item">
+              <span className="dot dot-err" />
+              <strong style={{ color: "var(--err)" }}>{error}</strong>
+            </div>
+          </>
+        ) : null}
       </section>
 
       <section className="grid">
         <article className="panel">
-          <p className="panel-label">Latest event</p>
-          <p className="event-name">{latest?.event ?? "waiting_for_data"}</p>
-          <p className="meta-line">Updated: {latest?.receivedAt ?? "No events received yet"}</p>
-          {latest?.sessionId ? <p className="meta-line">Session: {shortId(latest.sessionId)}</p> : null}
-          {latest?.colour ? <p className="meta-line">Colour: {latest.colour}</p> : null}
-          {latest?.direction ? <p className="meta-line">Direction: {latest.direction}</p> : null}
+          <p className="panel-label">Live scanner</p>
+          <p className="event-name">{labelForEvent(latest?.event)}</p>
+          {latest?.colour ? <p className="meta-line">Tag colour · {latest.colour}</p> : null}
+          {latest?.direction ? <p className="meta-line">Direction · {latest.direction}</p> : null}
           {latest?.movementClass ? (
             <p className="meta-line">
-              Movement ML: {latest.movementClass}
+              Motion class · {latest.movementClass}
               {movementConfidence !== null ? ` (${movementConfidence.toFixed(3)})` : ""}
             </p>
           ) : null}
           {greenConfidence !== null ? (
-            <p className="meta-line">Green confidence: {greenConfidence.toFixed(3)}</p>
+            <p className="meta-line">Verified-tag conf · {greenConfidence.toFixed(3)}</p>
           ) : null}
           {latest?.topLabel ? (
             <p className="meta-line">
-              Colour top: {latest.topLabel}
+              Top tag · {latest.topLabel}
               {topConfidence !== null ? ` (${topConfidence.toFixed(3)})` : ""}
             </p>
           ) : null}
           {voiceStartConfidence !== null ? (
-            <p className="meta-line">Voice start confidence: {voiceStartConfidence.toFixed(3)}</p>
+            <p className="meta-line">Scan-cmd conf · {voiceStartConfidence.toFixed(3)}</p>
           ) : null}
-          {error ? <p className="error-line">Error: {error}</p> : null}
+          {!latest ? (
+            <p className="placeholder">No scanner events received yet.</p>
+          ) : null}
         </article>
 
         <article className="panel">
-          <p className="panel-label">Movement data</p>
+          <p className="panel-label">Package handling motion</p>
           {hasMovement ? (
             <>
-              <div className="status-strip">
+              <div className="movement-class-row">
                 <span>{latest.movementClass ?? "unknown"}</span>
                 <strong>
-                  {movementConfidence !== null ? `${(movementConfidence * 100).toFixed(1)}%` : "--"}
+                  {movementConfidence !== null ? `${(movementConfidence * 100).toFixed(1)}%` : "—"}
                 </strong>
               </div>
               <div className="movement-grid">
@@ -317,18 +366,20 @@ export default function HomePage() {
               </div>
             </>
           ) : (
-            <p className="placeholder">Movement values appear here once tracking starts.</p>
+            <p className="placeholder">
+              Handling-motion telemetry appears once the operator picks up the verified package.
+            </p>
           )}
         </article>
       </section>
 
       <section className="session-layout">
         <article className="panel">
-          <p className="panel-label">Recorded sessions</p>
+          <p className="panel-label">Recent pick sessions</p>
           <div className="session-list-heading">
-            <p className="session-count">{sessions.length} recent sessions</p>
+            <p className="session-count">{sessions.length} recent picks</p>
             <button className="live-session-button" onClick={showLiveSession} type="button">
-              Follow live
+              Follow active
             </button>
           </div>
           <div className="session-list">
@@ -342,24 +393,24 @@ export default function HomePage() {
                   onClick={() => selectSession(session.id)}
                   type="button"
                 >
-                  <span>
+                  <div className="session-button-row">
                     <strong>{formatTime(session.startedAt)}</strong>
-                    <em>{shortId(session.id)}</em>
-                  </span>
-                  <span className={`status-pill status-${session.status}`}>{session.status}</span>
+                    <span className={`status-pill status-${session.status}`}>{session.status}</span>
+                  </div>
+                  <em>{shortId(session.id)}</em>
                   <small>
-                    {session.eventCount} events · trigger {session.triggerEvent}
+                    {session.eventCount} events · {labelForEvent(session.triggerEvent)}
                   </small>
                 </button>
               ))
             ) : (
-              <p className="placeholder">Sessions will appear after the first board event.</p>
+              <p className="placeholder">Pick sessions will appear after the first scanner event.</p>
             )}
           </div>
         </article>
 
         <article className="panel session-detail-panel">
-          <p className="panel-label">Session replay</p>
+          <p className="panel-label">Pick session replay</p>
           {sessionDetail?.session ? (
             <>
               <div className="session-heading">
@@ -381,7 +432,7 @@ export default function HomePage() {
                   onClick={stopCurrentSession}
                   type="button"
                 >
-                  {stopPending ? "Ending..." : "End connection"}
+                  {stopPending ? "Closing pick…" : "End pick session"}
                 </button>
                 <button
                   className="next-data-button"
@@ -394,13 +445,17 @@ export default function HomePage() {
                 <p className="meta-line">
                   {sessionMessage ||
                     (canStopSession
-                      ? "End connection saves only authenticated recordings and stops the bridge."
-                      : "This session is not active.")}
+                      ? "Ending the pick saves only sessions where both voice arming and tag verification passed."
+                      : "This pick session is no longer active.")}
                 </p>
               </div>
 
               <MilestoneRow session={sessionDetail.session} />
-              <SelectedEventCard event={selectedReplayEvent} index={selectedEventIndex} total={replayEvents.length} />
+              <SelectedEventCard
+                event={selectedReplayEvent}
+                index={selectedEventIndex}
+                total={replayEvents.length}
+              />
               <EventTimeline
                 events={replayEvents}
                 selectedEventId={selectedReplayEvent?.id}
@@ -414,15 +469,15 @@ export default function HomePage() {
               <MovementChart samples={sessionDetail.movementSamples ?? []} />
             </>
           ) : (
-            <p className="placeholder">Select a session to inspect its recorded timeline.</p>
+            <p className="placeholder">Select a pick session to inspect its recorded timeline.</p>
           )}
         </article>
       </section>
 
-      <section className="panel raw-panel">
-        <p className="panel-label">Raw JSON</p>
+      <details className="panel raw-panel">
+        <summary className="raw-panel-summary">Raw scanner payload</summary>
         <pre>{JSON.stringify(latest, null, 2) ?? "null"}</pre>
-      </section>
+      </details>
     </main>
   );
 }
@@ -431,17 +486,17 @@ function Metric({ label, value }) {
   return (
     <div className="metric-card">
       <span>{label}</span>
-      <strong>{typeof value === "number" ? value.toFixed(3) : "--"}</strong>
+      <strong>{typeof value === "number" ? value.toFixed(3) : "—"}</strong>
     </div>
   );
 }
 
 function MilestoneRow({ session }) {
   const milestones = [
-    ["setup", session.startedAt],
-    ["voice", session.voiceStartedAt],
-    ["colour", session.colourAuthenticatedAt],
-    ["movement", session.movementStartedAt]
+    ["scanner boot", session.startedAt],
+    ["voice arm", session.voiceStartedAt],
+    ["tag verified", session.colourAuthenticatedAt],
+    ["handling", session.movementStartedAt]
   ];
 
   return (
@@ -449,7 +504,7 @@ function MilestoneRow({ session }) {
       {milestones.map(([label, value]) => (
         <div className={value ? "milestone-hit" : "milestone-miss"} key={label}>
           <span>{label}</span>
-          <strong>{value ? formatTime(value) : "waiting"}</strong>
+          <strong>{value ? formatTime(value) : "—"}</strong>
         </div>
       ))}
     </div>
@@ -460,8 +515,10 @@ function SelectedEventCard({ event, index, total }) {
   if (!event) {
     return (
       <div className="selected-event-card">
-        <p className="section-title">Selected data</p>
-        <p className="placeholder">Press Next data after voice, colour, or movement events arrive.</p>
+        <p className="section-title">Selected event</p>
+        <p className="placeholder">
+          Press Next data once voice arm, tag verification, or handling events have been recorded.
+        </p>
       </div>
     );
   }
@@ -469,13 +526,13 @@ function SelectedEventCard({ event, index, total }) {
   return (
     <div className="selected-event-card">
       <div className="chart-heading">
-        <p className="section-title">Selected data</p>
-        <span>
+        <p className="section-title" style={{ marginTop: 0 }}>Selected event</p>
+        <span className="tnum">
           {index + 1} / {total}
         </span>
       </div>
       <div className="selected-event-summary">
-        <strong>{event.eventType}</strong>
+        <strong>{labelForEvent(event.eventType)}</strong>
         <span>{formatDateTime(event.receivedAt)}</span>
       </div>
       <pre>{JSON.stringify(event.payload, null, 2)}</pre>
@@ -486,7 +543,7 @@ function SelectedEventCard({ event, index, total }) {
 function EventTimeline({ events, selectedEventId, onSelectEvent }) {
   return (
     <div className="timeline-block">
-      <p className="section-title">Event timeline</p>
+      <p className="section-title">Pick session timeline</p>
       {events.length > 0 ? (
         <div className="timeline-list">
           {events.map((event) => (
@@ -497,13 +554,13 @@ function EventTimeline({ events, selectedEventId, onSelectEvent }) {
               type="button"
             >
               <span>{formatTime(event.receivedAt)}</span>
-              <strong>{event.eventType}</strong>
+              <strong>{labelForEvent(event.eventType)}</strong>
               {event.payload?.movementClass ? <em>{event.payload.movementClass}</em> : null}
             </button>
           ))}
         </div>
       ) : (
-        <p className="placeholder">Only debug events have been recorded so far.</p>
+        <p className="placeholder">No pick events recorded yet for this session.</p>
       )}
     </div>
   );
@@ -525,14 +582,25 @@ function MovementChart({ samples }) {
   return (
     <div className="chart-block">
       <div className="chart-heading">
-        <p className="section-title">Movement confidence</p>
+        <p className="section-title" style={{ marginTop: 0 }}>Handling-motion confidence</p>
         <span>{chartSamples.length} samples</span>
       </div>
       {chartSamples.length > 0 ? (
         <>
-          <svg className="confidence-chart" viewBox="0 0 100 100" preserveAspectRatio="none">
-            <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" />
-          </svg>
+          <div className="chart-frame">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+              <line x1="0" x2="100" y1="0" y2="0" className="chart-axis-line" />
+              <line x1="0" x2="100" y1="50" y2="50" className="chart-axis-line" />
+              <line x1="0" x2="100" y1="100" y2="100" className="chart-axis-line" />
+              <polyline
+                points={points}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          </div>
           <div className="direction-chips">
             {chartSamples.slice(-12).map((sample) => (
               <span key={sample.id}>
@@ -545,7 +613,7 @@ function MovementChart({ samples }) {
           </div>
         </>
       ) : (
-        <p className="placeholder">Movement chart appears after tracking starts.</p>
+        <p className="placeholder">Handling-motion chart appears once the operator picks up the package.</p>
       )}
     </div>
   );
@@ -585,7 +653,7 @@ function shortId(id) {
 
 function formatTime(value) {
   if (!value) {
-    return "--";
+    return "—";
   }
 
   return new Intl.DateTimeFormat("en-GB", {
@@ -597,7 +665,7 @@ function formatTime(value) {
 
 function formatDateTime(value) {
   if (!value) {
-    return "--";
+    return "—";
   }
 
   return new Intl.DateTimeFormat("en-GB", {
