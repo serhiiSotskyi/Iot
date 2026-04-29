@@ -10,6 +10,15 @@ It has 3 parts:
 
 This file is meant for both humans and coding agents. If you are joining the project, read this first.
 
+## Further Documentation
+
+For the academic submission and a deeper read of the system, see:
+
+- [`docs/architecture.md`](docs/architecture.md) — system topology, IoT World Forum 7-layer reference-model mapping, and a file-by-file implementation map.
+- [`docs/threat-model.md`](docs/threat-model.md) — full STRIDE table with DREAD scoring, implemented mitigations, and accepted residual risks.
+- [`docs/design-decisions.md`](docs/design-decisions.md) — recorded design choices including the HTTP-POST-over-MQTT justification and the rationale for the USB-serial bridge.
+- [`docs/model-metrics.md`](docs/model-metrics.md) — performance template for the three Edge Impulse models (fill in from each project's *Model testing* and *EON Tuner* tabs).
+
 ## High-Level Flow
 
 The board does not send HTTP directly. It prints JSON to USB Serial at `115200`, and the Python bridge forwards that JSON to the web app.
