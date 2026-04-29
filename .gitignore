@@ -8,3 +8,8 @@ __pycache__/
 venv/
 .env
 
+# JetBrains IDE
+.idea/
+
+# Claude Code workspace state
+.claude/
