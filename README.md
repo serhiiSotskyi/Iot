@@ -1,200 +1,301 @@
 # Warehouse Sensor Node
 
-A three-tier IoT system that turns an Arduino Nano 33 BLE Sense into a
-warehouse pick assistant. The board runs three on-device Edge Impulse
-models — voice keyword spotting, package-tag colour classification, and
-IMU motion classification — and streams classification results over USB
-serial to a Python bridge, which forwards them to a Next.js + Postgres
+A three-tier IoT demo that turns an Arduino Nano 33 BLE / Nano 33 BLE
+Sense into a warehouse pick assistant. The board runs three local Edge
+Impulse models for voice keyword spotting, colour authentication, and
+IMU motion classification. It prints JSON over USB Serial to a Python
+bridge, and the bridge forwards those events to a Next.js + Postgres
 dashboard for live monitoring and pick-session replay.
 
-## What it does
+## What It Does
 
-An operator approaches a workstation, says **"start"** to arm the
-scanner, presents a green package tag for verification, then handles the
-package while the system records the handling motion direction
-(up / down / left / right / idle) until the pick session is ended from
-the dashboard.
+The normal manual-test flow is:
 
-This is the realistic embedded-ML pattern: the constrained MCU does the
-inference, a trusted gateway does the I/O, and a server owns persistence
-and UI.
+1. The operator resets the board and waits for `setup_status`.
+2. The operator says **Start**.
+3. The dashboard shows `"Start" voice authentication detected`.
+4. The operator presents a green package tag/card.
+5. The dashboard shows `Green color detected.`
+6. The operator moves the board up, down, left, or right.
+7. The dashboard shows `Detecting movement.`
+8. The operator clicks **End pick session** and replays the completed
+   session from the dashboard.
+
+The embedded pattern is intentional: the MCU does the inference, a
+trusted USB-connected gateway does the network I/O, and the server owns
+persistence, authentication, and UI.
 
 ## Hardware
 
-- Arduino Nano 33 BLE Sense (nRF52840, Cortex-M4F @ 64 MHz, 1 MB flash, 256 KB RAM)
-- USB-A → micro-USB cable
-- A green object to act as the package tag
-- A laptop or single-board computer with Docker and Python 3.10+
+- Arduino Nano 33 BLE or Nano 33 BLE Sense
+- USB data cable, not a charge-only cable
+- A green object or card for the colour-authentication gate
+- Laptop or small host with Docker Desktop and Python 3.10+
+- Arduino IDE 2.x for flashing the firmware
 
-## Layout
+## Repository Layout
 
+```text
+arduino/voice_colour_motion_demo/        firmware sketch and state machine
+arduino/libraries/combined_inferencing/  one Edge Impulse SDK with three impulse handles
+bridge/serial_to_http.py                 USB-serial to HTTP bridge
+bridge/requirements.txt                  Python bridge dependencies
+web/                                     Next.js dashboard and API
+web/db/schema.sql                        Postgres schema
+tests/bridge/                            bridge unit tests
+reports/                                 Word documents for setup, video links, and contribution evidence
+_update_server                           pull/build/restart helper for an already cloned deployment
+verify.sh                                live API/auth verification script
 ```
-arduino/voice_colour_motion_demo/        firmware sketch (state machine + 3 model invocations)
-arduino/libraries/combined_inferencing/  one Edge Impulse SDK + 3 impulse handles
-bridge/serial_to_http.py                 USB-serial → HTTP bridge with retry queue
-web/                                     Next.js dashboard + Postgres-backed event store
-docs/                                    architecture, design decisions, threat model, model metrics
-docs/diagrams/                           four .drawio diagrams for the report
 
-serhiisotskyi-project-1_inferencing/         Serhii's original EI export — voice keyword (project 970121)
-pepstee-project-1_inferencing/               Artiom's original EI export — colour (project 970107)
-joelshore-project-1-cpp-mcu-v1-impulse-#8/   Joel's original EI export — motion (project 928825)
+The combined firmware library contains all three compiled models. The
+current main branch also keeps these original Edge Impulse exports as
+model evidence:
+
+```text
+serhiisotskyi-project-1_inferencing/          voice model, project 970121
+joelshore-project-1-cpp-mcu-v1-impulse-#8/    movement model, project 928825
 ```
 
-The three per-author directories at the repository root are the
-**Edge Impulse exports** each member produced from their own EI Studio
-account, retained as individual-contribution evidence. The firmware
-compiles against `arduino/libraries/combined_inferencing/`, not these.
-See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for the per-author model
-breakdown (project IDs, labels, sensor configurations).
+The firmware compiles against `arduino/libraries/combined_inferencing/`,
+not directly against individual generated export folders. Do not add
+those export folders as separate Arduino libraries for the main sketch,
+because the generated SDK symbols collide.
 
-## Run it
+## Quick Start
 
-### 1. Bring up the dashboard
+For a fuller step-by-step guide, use
+`reports/setup_and_manual_testing_guide.docx`. The commands below are the
+short version for macOS/Linux from the repository root.
+
+### 1. Configure `.env`
 
 ```bash
-cp .env.example .env      
+cp .env.example .env
+openssl rand -hex 32
+```
+
+Edit `.env` and fill these values:
+
+```env
+WEB_PORT=3001
+POSTGRES_HOST_PORT=5434
+DASHBOARD_PASSWORD=choose-a-demo-password
+SESSION_SECRET=<paste openssl rand -hex 32 output>
+BRIDGE_API_TOKEN=<paste openssl rand -hex 32 output>
+ADMIN_API_TOKEN=<paste openssl rand -hex 32 output>
+```
+
+`BRIDGE_API_TOKEN` and `ADMIN_API_TOKEN` are required by
+`docker-compose.yml`. `DASHBOARD_PASSWORD` and `SESSION_SECRET` enable
+the dashboard login flow used during the demo.
+
+### 2. Start Dashboard and Database
+
+```bash
 docker compose up -d --build
+docker compose ps
 ```
 
-`BRIDGE_API_TOKEN` and `ADMIN_API_TOKEN` are required by `docker-compose.yml`;
-the stack will refuse to start if either is unset. Generate values with
-`openssl rand -hex 24`.
+With `WEB_PORT=3001`, open:
 
-If host port 3000 or 5432 is already in use:
-
-```bash
-WEB_PORT=3001 POSTGRES_HOST_PORT=5434 docker compose up -d --build
+```text
+http://localhost:3001/
 ```
 
-The dashboard is at <http://localhost:3000> (or whatever `WEB_PORT` you set).
-If `DASHBOARD_PASSWORD` is set in `.env`, you'll be redirected to `/login`.
+Sign in with the value from `DASHBOARD_PASSWORD`.
 
-### 2. Flash the firmware
-
-Open `arduino/voice_colour_motion_demo/voice_colour_motion_demo.ino` in
-Arduino IDE 2.x. Make sure `arduino/libraries/combined_inferencing/`
-is on your sketchbook libraries path. Select **Arduino Nano 33 BLE** as
-the board and upload.
-
-> **Do not** add the three top-level Edge Impulse export trees as
-> separate Arduino libraries — they'd collide on shared SDK symbols.
-> The combined library bundles all three models against one SDK copy.
-> See `docs/design-decisions.md` § 3.
-
-### 3. Start the bridge
+Useful logs:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install pyserial requests
-BRIDGE_API_TOKEN="$(grep ^BRIDGE_API_TOKEN .env | cut -d= -f2)" \
+docker compose logs -f web
+docker compose logs -f postgres
+```
+
+### 3. Flash the Firmware
+
+Open this sketch in Arduino IDE:
+
+```text
+arduino/voice_colour_motion_demo/voice_colour_motion_demo.ino
+```
+
+Install/select:
+
+- Arduino Nano 33 BLE or Nano 33 BLE Sense board package
+- `Arduino_APDS9960`
+- `Arduino_LSM9DS1`
+- `PDM`
+- `combined_inferencing` from `arduino/libraries/combined_inferencing/`
+
+For Arduino IDE, either set the sketchbook location to this repository's
+`arduino/` folder, or copy the combined library into the normal Arduino
+libraries folder:
+
+```bash
+mkdir -p "$HOME/Documents/Arduino/libraries"
+cp -R arduino/libraries/combined_inferencing "$HOME/Documents/Arduino/libraries/"
+```
+
+Restart Arduino IDE after changing library locations, then upload the
+sketch. Close Serial Monitor before running the Python bridge, because
+only one process can own the serial port.
+
+### 4. Start the Python Bridge
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r bridge/requirements.txt
+```
+
+Find the board:
+
+```bash
+ls /dev/cu.usbmodem*
+```
+
+Export the bridge token and start the bridge. Replace the port if your
+board appears under a different name.
+
+```bash
+export BRIDGE_API_TOKEN="$(grep '^BRIDGE_API_TOKEN=' .env | cut -d= -f2-)"
+
 python bridge/serial_to_http.py \
-    --port /dev/ttyACM0 \
-    --endpoint http://localhost:3000/api/movement
+  --port /dev/cu.usbmodem1201 \
+  --endpoint http://localhost:3001/api/movement \
+  --api-token "$BRIDGE_API_TOKEN" \
+  --verbose
 ```
 
-The bridge picks up `BRIDGE_API_TOKEN` from the environment (or accepts
-`--api-token <token>` explicitly).
+For a clean run, start the bridge first, then single-press reset the
+Arduino. The first important bridge line should be similar to:
 
-Adjust `--port` to your serial device. On Linux the user must be in the
-`dialout` group to read `/dev/ttyACM*`.
-
-On Windows, the helper script can do the repetitive local-test setup:
-
-```powershell
-.\scripts\manual-test.ps1
+```text
+[bridge] POST setup_status -> 200
 ```
 
-It creates `.env` from `.env.example` if needed, fills blank local test
-tokens, starts Docker Compose, opens the dashboard, auto-detects a USB
-serial COM port, and starts the bridge with a longer manual-test timeout.
-If auto-detection chooses the wrong port, pass it explicitly:
+Optional debug forwarding:
 
-```powershell
-.\scripts\manual-test.ps1 -Port COM6
+```bash
+python bridge/serial_to_http.py \
+  --port /dev/cu.usbmodem1201 \
+  --endpoint http://localhost:3001/api/movement \
+  --api-token "$BRIDGE_API_TOKEN" \
+  --debug-downsample 1 \
+  --verbose
 ```
 
-### 4. Walk the demo
+By default the bridge drops `voice_debug` and `colour_debug` events so the
+dashboard and database stay focused on functional demo events.
 
-1. Reset the board. Watch the dashboard live status update to
-   *"Sensor node booted"* — confirms `setup_status` arrived.
-2. Wait for the 4-second arm delay, then say **"start"**.
-   The scanner status flips to *'"Start" voice authentication detected'*.
-3. Hold a green object in front of the APDS-9960 sensor.
-   Status flips to *"Green color detected."*
-4. Move the board up, down, left, or right — the dashboard shows the
-   *"Detecting movement."* status plus the motion class and confidence in real time.
-5. Press **End pick session** on the dashboard. The bridge exits, the
-   session is saved as completed, and you can replay it from the list.
+### 5. Walk the Demo
 
-## Documentation
+1. Reset the board and wait for `POST setup_status -> 200`.
+2. Wait for the 4-second arm delay, then say **Start** clearly.
+3. Confirm the dashboard shows `"Start" voice authentication detected`.
+4. Hold a green object close to the APDS-9960 colour sensor.
+5. Confirm the dashboard shows `Green color detected.`
+6. Move the board up, down, left, or right.
+7. Confirm the dashboard shows `Detecting movement.`
+8. Click **End pick session**.
+9. Confirm the bridge prints `stop requested by server` and exits.
+10. Replay the session from the recent pick sessions list.
 
-The narrative documents in `docs/` are written for the report; they
-explain *why* the system is shaped the way it is, not what each line of
-code does.
+## API Routes
 
-| File | Topic |
+The current web app exposes these routes:
+
+| Route | Purpose |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | Topology mapped to the IoT World Forum 7-layer reference model |
-| [`docs/design-decisions.md`](docs/design-decisions.md) | HTTP vs MQTT, USB bridge vs Wi-Fi, combined library vs three libraries, polling vs SSE, debug-event drop |
-| [`docs/threat-model.md`](docs/threat-model.md) | DFD-driven STRIDE-per-element analysis with CVSS v3.1 base scores; methodology section justifies STRIDE + CVSS over DREAD |
-| [`docs/model-metrics.md`](docs/model-metrics.md) | Template for the three Edge Impulse models — fill in from EI Studio before submission |
-| `docs/diagrams/01-system-architecture.drawio` | System topology with IoT-layer colour bands |
-| `docs/diagrams/02-data-flow-diagram.drawio` | DFD with trust boundaries — backs up the threat model |
-| `docs/diagrams/03-firmware-state-machine.drawio` | Boot → arm → voice → colour → motion gates |
-| `docs/diagrams/04-pick-session-sequence.drawio` | End-to-end sequence across all six participants |
+| `POST /api/auth/login` | Dashboard password login |
+| `POST /api/auth/logout` | Dashboard logout |
+| `POST /api/movement` | Bridge event ingest, protected by `BRIDGE_API_TOKEN` |
+| `GET /api/bridge/control` | Bridge stop polling, protected by `BRIDGE_API_TOKEN` |
+| `GET /api/latest` | Latest event for the authenticated dashboard |
+| `GET /api/sessions` | Recorded sessions for the authenticated dashboard |
+| `GET /api/sessions/[id]` | One recorded session replay |
+| `POST /api/sessions/current/complete` | End the active pick session; accepts dashboard cookie or `ADMIN_API_TOKEN` |
+
+## Reports and Submission Documents
+
+The `docs/` folder is not part of the current main branch. The tracked
+submission/supporting documents are in `reports/`:
+
+| File | Purpose |
+|---|---|
+| `reports/setup_and_manual_testing_guide.docx` | Full setup and manual testing runbook from a fresh clone |
+| `reports/iot_project_video_links.docx` | Google Drive link for the full walkthrough and project song videos |
+| `reports/joel_section_iot.docx` | Joel's contribution write-up |
 
 ## Configuration
 
-`.env` (gitignored) holds runtime secrets and is read by Docker Compose.
-See `.env.example` for the full list. Highlights:
+`.env` is gitignored and read by Docker Compose. See `.env.example` for
+the complete list.
 
 | Variable | Purpose |
 |---|---|
-| `POSTGRES_PASSWORD` | Postgres password — replace the default before any deployment |
-| `BRIDGE_API_TOKEN` | **Required.** Bearer token the bridge sends to `/api/movement` and `/api/bridge/control` |
-| `ADMIN_API_TOKEN` | **Required.** Bearer token accepted by `/api/sessions/current/complete` for external clients (the logged-in dashboard uses its session cookie instead) |
-| `INGEST_RATE_LIMIT_PER_MIN` | Per-IP rate limit on ingest (0 = off) |
-| `DASHBOARD_PASSWORD` | Operator login password — when set, the dashboard is gated |
-| `SESSION_SECRET` | HMAC key for the session cookie. Generate with `openssl rand -hex 32` |
-| `POSTGRES_HOST_PORT` | Override if 5432 is busy on your host |
-| `WEB_PORT` | Override if 3000 is busy on your host |
+| `WEB_PORT` | Host port for the dashboard, for example `3001` |
+| `POSTGRES_HOST_PORT` | Host port for Postgres, for example `5434` |
+| `POSTGRES_PASSWORD` | Postgres password for the local Docker database |
+| `DASHBOARD_PASSWORD` | Operator login password |
+| `SESSION_SECRET` | HMAC key for the signed `iot_session` cookie; use at least 16 characters |
+| `BRIDGE_API_TOKEN` | Bearer token for `/api/movement` and `/api/bridge/control` |
+| `ADMIN_API_TOKEN` | Bearer token accepted by the Stop endpoint for non-browser calls |
+| `INGEST_RATE_LIMIT_PER_MIN` | Per-IP ingest rate limit; `0` disables it |
 
-## Testing & verification
+## Testing and Verification
 
-Two verification surfaces exist; together they cover the auth boundary
-and the bridge's input parsing.
-
-**1. `./verify.sh` — end-to-end auth assertions** (requires the stack to be running):
+Run the live API/auth verification after Docker is running:
 
 ```bash
-./verify.sh http://localhost:3000
+./verify.sh http://localhost:3001
 ```
 
-The script reads `BRIDGE_API_TOKEN`, `ADMIN_API_TOKEN`, `DASHBOARD_PASSWORD`,
-and `SESSION_SECRET` from `.env`, then makes ~15 `curl` assertions against the live API:
-unauthed dashboard hits redirect to `/login`, login with the wrong
-password returns 401, login with the correct password sets the
-`iot_session` cookie, ingest and bridge-control endpoints reject
-unauthed requests but accept the bridge token, and the Stop endpoint
-accepts *either* the operator session cookie *or* `ADMIN_API_TOKEN`.
-Exit code is the number of failed assertions.
+The script reads `DASHBOARD_PASSWORD`, `SESSION_SECRET`,
+`BRIDGE_API_TOKEN`, and `ADMIN_API_TOKEN` from `.env`. It checks login,
+cookie auth, bridge bearer-token auth, Stop endpoint auth, and read-only
+dashboard API protection.
 
-**2. `python -m unittest tests.bridge.test_serial_to_http` — pure-logic unit tests**:
+Run bridge unit tests:
 
 ```bash
 python -m unittest tests.bridge.test_serial_to_http -v
 ```
 
-13 tests over `parse_json_line` (handles boot banners, malformed JSON,
-non-object payloads, whitespace), `infer_control_endpoint` (URL
-inference; query-string drop), and colour-auth endpoint selection. Stubs
-out `pyserial` and `requests` so no install is needed beyond Python 3.11+.
+These tests cover JSON-line parsing, control endpoint inference, and
+colour-auth endpoint selection without needing a real Arduino or web
+server.
 
-## Status
+## Troubleshooting
 
-This is a university IoT project, intentionally scoped for a controlled
-lab demo on a trusted LAN. The threat model in `docs/threat-model.md`
-records what is and isn't mitigated, with explicit out-of-scope items
-(TLS termination, per-operator identity, firmware code-signing) listed
-as recommended next steps.
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Connection refused` for `localhost:3001` | Docker web container is not running yet or `WEB_PORT` is different | Run `docker compose ps`; wait until `iot-demo-web` is healthy/running |
+| `401 Unauthorized` from the bridge | Missing or wrong `BRIDGE_API_TOKEN` | Re-export the token from `.env` and pass `--api-token "$BRIDGE_API_TOKEN"` |
+| `stop requested by server` after `voice_start` or `colour_debug` | Server is waiting for a fresh `setup_status` after a previous stop | Start the bridge, single-press reset the board, then wait for `setup_status` before saying Start |
+| `Device not configured` | USB device changed, disconnected, or reset into another mode | Unplug/replug, run `ls /dev/cu.usbmodem*`, restart bridge with the new port |
+| No serial data for 60s | Wrong port, sketch not uploaded, board silent, or Serial Monitor owns the port | Close Serial Monitor, verify sketch upload, reset board, restart bridge |
+| Board jumps straight to colour or movement | Restarting the bridge did not reset the Arduino state machine | Single-press reset the board while the bridge is listening |
+| Bridge retry traceback about `flush_retry_queue` arguments | Current retry path can hit an argument mismatch if the API is down while queued events flush | Start Docker first and wait healthy before starting the bridge |
+
+## Deployment Helper
+
+If the repository is already cloned on a server or demo laptop,
+`_update_server` pulls the latest `main`, rebuilds the Docker image, and
+restarts the stack:
+
+```bash
+chmod +x ./_update_server
+./_update_server
+```
+
+It still requires `.env` to contain `BRIDGE_API_TOKEN` and
+`ADMIN_API_TOKEN`.
+
+## Current Scope
+
+This is a controlled university demo intended for a trusted LAN and a
+single operator dashboard. The board does not use Wi-Fi or direct HTTP.
+The Python bridge is required because the board sends newline-delimited
+JSON over USB Serial at `115200`.
